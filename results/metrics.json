@@ -2227,7 +2227,8 @@
     "phase7_mdd": "2026-11-10T20:56:01+00:00",
     "phase7_traceability": "2026-11-10T20:31:30+00:00",
     "phase7_eval": "2026-11-10T20:31:15+00:00",
-    "phase7_review": "2026-11-10T20:56:27+00:00"
+    "phase7_review": "2026-11-10T20:56:27+00:00",
+    "phase8_repro": "2026-11-10T21:59:28+00:00"
   },
   "phase1_convert": {
     "seconds": 59.9,
@@ -5289,5 +5290,65 @@
       "errors_found_on_review": 3,
       "accepted_on_review": false
     }
+  },
+  "phase8_repro": {
+    "sections": {
+      "phase1": {
+        "values": 1866,
+        "differing": 0,
+        "max_rel_diff": 0.0,
+        "only_in_one": 0
+      },
+      "phase2": {
+        "values": 486,
+        "differing": 88,
+        "max_rel_diff": 0.14964393604329232,
+        "only_in_one": 0
+      },
+      "phase2_recalibration": {
+        "values": 98,
+        "differing": 0,
+        "max_rel_diff": 5.875228593908344e-14,
+        "only_in_one": 0
+      },
+      "phase2_diagnostics": {
+        "values": 65,
+        "differing": 0,
+        "max_rel_diff": 2.2705635378731e-15,
+        "only_in_one": 0
+      },
+      "phase3": {
+        "values": 160,
+        "differing": 0,
+        "max_rel_diff": 8.759570314847993e-13,
+        "only_in_one": 0
+      },
+      "phase4": {
+        "values": 365,
+        "differing": 0,
+        "max_rel_diff": 2.9656510895271333e-15,
+        "only_in_one": 0
+      },
+      "phase5": {
+        "values": 196,
+        "differing": 0,
+        "max_rel_diff": 2.3245757535496793e-14,
+        "only_in_one": 0
+      },
+      "phase6": {
+        "values": 97,
+        "differing": 0,
+        "max_rel_diff": 1.257291825539753e-14,
+        "only_in_one": 0
+      }
+    },
+    "values_compared": 3333,
+    "values_differing": 88,
+    "max_rel_diff": 0.14964393604329232,
+    "worst": "phase2.lgbm.calibration_oot.2.ratio_actual_to_pred",
+    "missing": [],
+    "tolerance": 1e-09,
+    "clean_run_seconds": 2466.6,
+    "clean_run_tests_passed": 44
   }
 }

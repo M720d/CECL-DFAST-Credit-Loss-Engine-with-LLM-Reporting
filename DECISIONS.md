@@ -525,3 +525,14 @@ the two metrics files (`scripts/compare_metrics.py`).
 pattern `data/` ignores *every* directory named `data`, so the data-pipeline package would never
 have been committed and a fresh clone could not run. Patterns are now root-anchored (`/data/`,
 `/private/`).
+**Result of the clean run** (`phase8_repro`). Phases 1–6 rebuilt from raw data on a clean copy,
+all tests passing. Every value in phases 1, 3, 4, 5 and 6 (data counts, hazard, LGD, the CECL
+allowance and DFAST) matches to floating-point precision. The differences are all in Phase 2:
+- **The LightGBM challenger is not bit-reproducible** despite a fixed seed and `deterministic=True`
+  (multithreaded training): early stopping chose a different iteration, which moved its out-of-time
+  Gini in the third decimal and shifted its calibration buckets and SHAP values.
+- **Two scorecard diagnostics** depend on row order: KS differs in the sixth decimal (tied scores)
+  and max VIF moves slightly because it is computed on a row sample.
+- **Scorecard coefficients and the out-of-time Gini are identical.**
+Documented rather than fixed: single-threaded LightGBM would make it exact at a large runtime
+cost, and the challenger only informs the champion choice.

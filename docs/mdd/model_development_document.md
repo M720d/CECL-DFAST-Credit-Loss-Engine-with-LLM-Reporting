@@ -364,7 +364,7 @@ regulatory support (`docs/mdd/review_log.md`, D-047). No LLM-drafted text is use
 
 # Appendix A. Decision index
 
-47 documented decisions, each with rejected alternatives in `DECISIONS.md`.
+48 documented decisions, each with rejected alternatives in `DECISIONS.md`.
 
 | ID | Decision |
 |---|---|
@@ -415,6 +415,7 @@ regulatory support (`docs/mdd/review_log.md`, D-047). No LLM-drafted text is use
 | D-045 | Traceability matrix |
 | D-046 | Dense retrieval kept; hybrid BM25 rejected |
 | D-047 | The guardrail is necessary but not sufficient: human review is the control |
+| D-048 | Reports rendered from metrics; reproducibility tested on a clean copy |
 
 # Appendix B. Reproducibility
 
@@ -422,3 +423,19 @@ regulatory support (`docs/mdd/review_log.md`, D-047). No LLM-drafted text is use
 - **Inputs:** every parameter, path, URL and the random seed (20261110) are in `config.yaml`.
 - **Downloads:** public files are hashed in `data/raw/manifest_public.json`.
 - **Data:** raw data is not distributed (Freddie Mac terms); see the README for download steps.
+
+**Clean-copy reproducibility test (D-048).**
+- **Setup:** code, config and templates only, raw data linked, nothing derived.
+- **Run:** `make all` rebuilt phases 1–6 in 2467 seconds, with 44 tests passing.
+- **Comparison:** of 3,333 numeric values, 88 differ, all in Phase 2:
+  - the LightGBM challenger is not bit-reproducible under multithreading;
+  - two row-order-dependent scorecard diagnostics shift slightly.
+- **Exact matches** (maximum relative difference):
+
+| Section | Max relative difference |
+|---|---:|
+| Data (phase 1) | 0e+00 |
+| Hazard (phase 3) | 9e-13 |
+| LGD/EAD (phase 4) | 3e-15 |
+| CECL (phase 5) | 2e-14 |
+| DFAST (phase 6) | 1e-14 |

@@ -1360,7 +1360,7 @@ D-047). No LLM-drafted text is used in this document.</p>
 </tbody>
 </table>
 <h1 id="appendix-a.-decision-index">Appendix A. Decision index</h1>
-<p>47 documented decisions, each with rejected alternatives in
+<p>48 documented decisions, each with rejected alternatives in
 <code>DECISIONS.md</code>.</p>
 <table>
 <colgroup>
@@ -1570,6 +1570,11 @@ rate</td>
 <td>The guardrail is necessary but not sufficient: human review is the
 control</td>
 </tr>
+<tr class="even">
+<td>D-048</td>
+<td>Reports rendered from metrics; reproducibility tested on a clean
+copy</td>
+</tr>
 </tbody>
 </table>
 <h1 id="appendix-b.-reproducibility">Appendix B. Reproducibility</h1>
@@ -1584,5 +1589,44 @@ seed (20261110) are in <code>config.yaml</code>.</li>
 <li><strong>Data:</strong> raw data is not distributed (Freddie Mac
 terms); see the README for download steps.</li>
 </ul>
+<p><strong>Clean-copy reproducibility test (D-048).</strong> -
+<strong>Setup:</strong> code, config and templates only, raw data
+linked, nothing derived. - <strong>Run:</strong> <code>make all</code>
+rebuilt phases 1–6 in 2467 seconds, with 44 tests passing. -
+<strong>Comparison:</strong> of 3,333 numeric values, 88 differ, all in
+Phase 2: - the LightGBM challenger is not bit-reproducible under
+multithreading; - two row-order-dependent scorecard diagnostics shift
+slightly. - <strong>Exact matches</strong> (maximum relative
+difference):</p>
+<table>
+<thead>
+<tr class="header">
+<th>Section</th>
+<th style="text-align: right;">Max relative difference</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Data (phase 1)</td>
+<td style="text-align: right;">0e+00</td>
+</tr>
+<tr class="even">
+<td>Hazard (phase 3)</td>
+<td style="text-align: right;">9e-13</td>
+</tr>
+<tr class="odd">
+<td>LGD/EAD (phase 4)</td>
+<td style="text-align: right;">3e-15</td>
+</tr>
+<tr class="even">
+<td>CECL (phase 5)</td>
+<td style="text-align: right;">2e-14</td>
+</tr>
+<tr class="odd">
+<td>DFAST (phase 6)</td>
+<td style="text-align: right;">1e-14</td>
+</tr>
+</tbody>
+</table>
 </body>
 </html>

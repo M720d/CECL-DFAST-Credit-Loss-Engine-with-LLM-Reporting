@@ -282,3 +282,19 @@ regulatory support (`docs/mdd/review_log.md`, D-047). No LLM-drafted text is use
 - **Inputs:** every parameter, path, URL and the random seed ({{cfg.seed}}) are in `config.yaml`.
 - **Downloads:** public files are hashed in `data/raw/manifest_public.json`.
 - **Data:** raw data is not distributed (Freddie Mac terms); see the README for download steps.
+
+**Clean-copy reproducibility test (D-048).**
+- **Setup:** code, config and templates only, raw data linked, nothing derived.
+- **Run:** `make all` rebuilt phases 1–6 in {{phase8_repro.clean_run_seconds:.0f}} seconds, with {{phase8_repro.clean_run_tests_passed}} tests passing.
+- **Comparison:** of {{phase8_repro.values_compared:,}} numeric values, {{phase8_repro.values_differing}} differ, all in Phase 2:
+  - the LightGBM challenger is not bit-reproducible under multithreading;
+  - two row-order-dependent scorecard diagnostics shift slightly.
+- **Exact matches** (maximum relative difference):
+
+| Section | Max relative difference |
+|---|---:|
+| Data (phase 1) | {{phase8_repro.sections.phase1.max_rel_diff:.0e}} |
+| Hazard (phase 3) | {{phase8_repro.sections.phase3.max_rel_diff:.0e}} |
+| LGD/EAD (phase 4) | {{phase8_repro.sections.phase4.max_rel_diff:.0e}} |
+| CECL (phase 5) | {{phase8_repro.sections.phase5.max_rel_diff:.0e}} |
+| DFAST (phase 6) | {{phase8_repro.sections.phase6.max_rel_diff:.0e}} |
