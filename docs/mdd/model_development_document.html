@@ -1,0 +1,1588 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Model Development Document: Mortgage CECL &amp; DFAST Credit Loss Engine</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="mdd.css" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Model Development Document: Mortgage CECL &amp; DFAST
+Credit Loss Engine</h1>
+<div class="abstract">
+<div class="abstract-title">Abstract</div>
+<p><strong>Status:</strong> Draft for independent validation.
+<strong>As-of date:</strong> 202512. <strong>Data:</strong> Freddie Mac
+Single-Family Loan-Level Dataset, sample files, Release 48. Every figure
+in this document is rendered from <code>results/metrics.json</code> by
+<code>scripts/build_reports.py</code>; none is typed by hand. Design
+decisions are referenced as D-xxx (Appendix A, full text in
+<code>DECISIONS.md</code>).</p>
+</div>
+</header>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#executive-summary" id="toc-executive-summary">Executive
+summary</a></li>
+<li><a href="#purpose-scope-and-use" id="toc-purpose-scope-and-use">1.
+Purpose, scope and use</a></li>
+<li><a href="#data" id="toc-data">2. Data</a>
+<ul>
+<li><a href="#sources" id="toc-sources">2.1 Sources</a></li>
+<li><a href="#processing-and-data-quality"
+id="toc-processing-and-data-quality">2.2 Processing and data
+quality</a></li>
+<li><a href="#target-definitions" id="toc-target-definitions">2.3 Target
+definitions</a></li>
+</ul></li>
+<li><a href="#month-pd-scorecard" id="toc-month-pd-scorecard">3.
+12-month PD scorecard</a></li>
+<li><a href="#lifetime-default-and-prepayment-hazard"
+id="toc-lifetime-default-and-prepayment-hazard">4. Lifetime default and
+prepayment hazard</a></li>
+<li><a href="#loss-given-default-and-exposure-at-default"
+id="toc-loss-given-default-and-exposure-at-default">5. Loss given
+default and exposure at default</a></li>
+<li><a href="#cecl-allowance" id="toc-cecl-allowance">6. CECL
+allowance</a></li>
+<li><a href="#dfast-stress-projection"
+id="toc-dfast-stress-projection">7. DFAST stress projection</a></li>
+<li><a href="#validation-evidence-and-traceability"
+id="toc-validation-evidence-and-traceability">8. Validation evidence and
+traceability</a></li>
+<li><a href="#limitations-assumptions-and-use-restrictions"
+id="toc-limitations-assumptions-and-use-restrictions">9. Limitations,
+assumptions and use restrictions</a></li>
+<li><a href="#ongoing-monitoring-plan"
+id="toc-ongoing-monitoring-plan">10. Ongoing monitoring plan</a></li>
+<li><a href="#llm-reporting-layer-supporting-tool-not-a-model-input"
+id="toc-llm-reporting-layer-supporting-tool-not-a-model-input">11. LLM
+reporting layer (supporting tool, not a model input)</a></li>
+<li><a href="#appendix-a.-decision-index"
+id="toc-appendix-a.-decision-index">Appendix A. Decision index</a></li>
+<li><a href="#appendix-b.-reproducibility"
+id="toc-appendix-b.-reproducibility">Appendix B.
+Reproducibility</a></li>
+</ul>
+</nav>
+<h1 id="executive-summary">Executive summary</h1>
+<p>This document describes a loan-level credit loss engine for US
+first-lien single-family mortgages, used for two purposes: the
+<strong>CECL allowance</strong> (ASC 326) and <strong>DFAST-style
+supervisory stress projections</strong>. Both uses share one set of
+models:</p>
+<ul>
+<li>a <strong>12-month PD scorecard</strong> (WoE logistic regression)
+used for ranking and monitoring;</li>
+<li>a <strong>lifetime competing-risk hazard</strong> for monthly
+default and prepayment, driven by the Federal Reserve’s own scenario
+variables;</li>
+<li>a two-part <strong>LGD</strong> model (probability of cure ×
+fractional-logit severity) and an <strong>EAD</strong> equal to the
+scheduled amortization balance;</li>
+<li>a monthly <strong>projection engine</strong> combining them to loan
+maturity.</li>
+</ul>
+<p><strong>Key results.</strong></p>
+<ul>
+<li><strong>CECL:</strong> the probability-weighted allowance is
+<strong>0.70% of UPB</strong> on 347,613 loans. The model-only allowance
+(without reversion to historical loss rates) is 0.34%.</li>
+<li><strong>DFAST:</strong> under the 2026 severely adverse scenario,
+the 9-quarter loss rate is <strong>1.02%</strong>, against 0.21% under
+the baseline. The Federal Reserve’s all-bank first-lien figure is
+1.5%.</li>
+<li><strong>Validation evidence:</strong>
+<ul>
+<li>out-of-time scorecard Gini 0.778</li>
+<li>out-of-time prepayment actual/predicted 1.02</li>
+<li>a replay of the 2008–2010 crisis reproducing realized losses (1.88%
+predicted vs 1.88% actual)</li>
+<li>an untouched Jan–Jun 2026 backtest</li>
+</ul></li>
+</ul>
+<p><strong>Most material judgments:</strong></p>
+<ul>
+<li>the historical loss window used for CECL reversion (D-035), which
+moves the allowance more than any other parameter;</li>
+<li>the post-2013 servicing-regime assumption in LGD (D-031,
+D-040);</li>
+<li>the exclusion of COVID policy months from hazard estimation
+(D-024).</li>
+</ul>
+<p>Known limitations are in Section 9.</p>
+<h1 id="purpose-scope-and-use">1. Purpose, scope and use</h1>
+<p><strong>Intended use.</strong> Estimate lifetime expected credit
+losses for the CECL allowance and project 9-quarter credit losses under
+supervisory scenarios, for a portfolio of conforming fixed- and
+adjustable-rate first-lien mortgages.</p>
+<p><strong>In scope:</strong> loan-level PD, prepayment, LGD, EAD;
+scenario-conditional projection; allowance and stress-loss
+aggregation.</p>
+<p><strong>Out of scope:</strong></p>
+<ul>
+<li>jumbo, subprime, HELOC and junior liens;</li>
+<li>pre-provision net revenue, capital ratios and balance-sheet
+dynamics;</li>
+<li>quantified qualitative adjustments (Q-factors);</li>
+<li>independent validation, which a model developer cannot perform on
+their own model.</li>
+</ul>
+<p><strong>Model risk tier (proposed).</strong> High materiality: the
+model drives a financial-statement estimate and a regulatory exercise
+(SR 26-2 materiality: exposure and purpose).</p>
+<h1 id="data">2. Data</h1>
+<h2 id="sources">2.1 Sources</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Source</th>
+<th>Content</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Freddie Mac SFLLD, sample files (Release 48)</td>
+<td>1,374,984 loans, monthly performance through 202606, actual loss
+fields</td>
+<td>All models</td>
+</tr>
+<tr class="even">
+<td>Federal Reserve 2026 DFAST files</td>
+<td>Historic and scenario paths (unemployment, mortgage rate, Z.1 house
+prices)</td>
+<td>Hazard drivers, CECL and DFAST scenarios</td>
+</tr>
+<tr class="odd">
+<td>Freddie Mac House Price Index (FMHPI)</td>
+<td>Monthly state and national indices</td>
+<td>Mark-to-market LTV; state betas</td>
+</tr>
+<tr class="even">
+<td>FRED</td>
+<td>30-year mortgage rate (PMMS), unemployment, recession dates</td>
+<td>Refinance incentive, checks</td>
+</tr>
+</tbody>
+</table>
+<h2 id="processing-and-data-quality">2.2 Processing and data
+quality</h2>
+<p>Raw pipe-delimited files are read as text and cast with strict typing
+against the Release 48 layout (D-002), so layout drift fails rather than
+producing silent nulls. Conversion took 60 seconds with 1.0 GB peak
+memory (8.8 GB of text to 0.69 GB of parquet). Checks performed:</p>
+<ul>
+<li>0 duplicate loan-months;</li>
+<li>202 loans with month gaps (1,122 missing loan-months), kept, because
+events are keyed on period;</li>
+<li>0 unknown zero-balance codes;</li>
+<li>the loss identity (UPB + accrued interest + expenses + recoveries =
+actual loss, recoveries stored as negatives) holds for 19,681 of 19,681
+liquidations with loss data.</li>
+</ul>
+<h2 id="target-definitions">2.3 Target definitions</h2>
+<ul>
+<li><strong>Default</strong> (D-003): the first month with 90+ days past
+due, REO acquisition, or a default-type zero-balance code (02/03/09/15).
+Default is absorbing.</li>
+<li><strong>Forbearance</strong> (D-004): 90+ DPD months during
+forbearance, payment deferral or disaster relief do not trigger default.
+Without this, 12-month default rates for snapshots taken in 2019 and
+2020 (2.03%, 2.39%) would approach the 2009 peak (2.92%) despite
+negligible losses. With it, they are 0.38% and 0.39%. The flags exist
+only from 2014.</li>
+<li><strong>Prepayment</strong> (D-005): voluntary payoff with scheduled
+term remaining.</li>
+<li><strong>Censoring</strong> (D-006): reperforming-loan sales,
+defects, maturity, and loans active at the cutoff.</li>
+</ul>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Vintage</th>
+<th style="text-align: right;">Loans</th>
+<th style="text-align: right;">Lifetime default (used)</th>
+<th style="text-align: right;">Lifetime default (strict 90+ DPD)</th>
+<th style="text-align: right;">12m snapshot PD</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1999</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">3.45%</td>
+<td style="text-align: right;">3.46%</td>
+<td style="text-align: right;">0.81%</td>
+</tr>
+<tr class="even">
+<td>2002</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">3.36%</td>
+<td style="text-align: right;">3.40%</td>
+<td style="text-align: right;">0.78%</td>
+</tr>
+<tr class="odd">
+<td>2005</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">10.90%</td>
+<td style="text-align: right;">11.04%</td>
+<td style="text-align: right;">1.73%</td>
+</tr>
+<tr class="even">
+<td>2007</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">16.29%</td>
+<td style="text-align: right;">16.53%</td>
+<td style="text-align: right;">3.52%</td>
+</tr>
+<tr class="odd">
+<td>2008</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">9.16%</td>
+<td style="text-align: right;">9.34%</td>
+<td style="text-align: right;">2.25%</td>
+</tr>
+<tr class="even">
+<td>2011</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">2.35%</td>
+<td style="text-align: right;">3.10%</td>
+<td style="text-align: right;">0.37%</td>
+</tr>
+<tr class="odd">
+<td>2014</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">2.36%</td>
+<td style="text-align: right;">3.89%</td>
+<td style="text-align: right;">0.40%</td>
+</tr>
+<tr class="even">
+<td>2017</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">2.51%</td>
+<td style="text-align: right;">5.85%</td>
+<td style="text-align: right;">0.52%</td>
+</tr>
+<tr class="odd">
+<td>2020</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">1.10%</td>
+<td style="text-align: right;">2.31%</td>
+<td style="text-align: right;">0.25%</td>
+</tr>
+<tr class="even">
+<td>2023</td>
+<td style="text-align: right;">50,000</td>
+<td style="text-align: right;">2.33%</td>
+<td style="text-align: right;">2.62%</td>
+<td style="text-align: right;">0.83%</td>
+</tr>
+<tr class="odd">
+<td>2026</td>
+<td style="text-align: right;">24,988</td>
+<td style="text-align: right;">0.02%</td>
+<td style="text-align: right;">0.02%</td>
+<td style="text-align: right;">0.00%</td>
+</tr>
+</tbody>
+</table>
+<figure>
+<img src="../../results/figures/default_rates_by_vintage.png"
+alt="Default rates by vintage" />
+<figcaption aria-hidden="true">Default rates by vintage</figcaption>
+</figure>
+<h1 id="month-pd-scorecard">3. 12-month PD scorecard</h1>
+<p><strong>Method.</strong> The scorecard is fitted on yearly loan
+snapshots (D-007).</p>
+<ul>
+<li>Monotonic WoE binning (D-014), with minimum-bin exceptions for rare
+high-risk states (D-018).</li>
+<li>Selection: IV ≥ 0.02, a correlation filter, and backward elimination
+on wrong signs and on p-values using loan-clustered standard errors
+(D-015).</li>
+<li>Era-proxy features are excluded on training-only evidence
+(D-019).</li>
+<li>Samples: fit on 80% of loans from 1999–2014, an in-time holdout on
+the other 20%, and an out-of-time test on 2015–2019 vintages
+(D-012).</li>
+</ul>
+<table>
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Sample</th>
+<th style="text-align: right;">Snapshots</th>
+<th style="text-align: right;">Defaults</th>
+<th style="text-align: right;">Scorecard Gini</th>
+<th style="text-align: right;">Scorecard KS</th>
+<th style="text-align: right;">LightGBM Gini</th>
+<th style="text-align: right;">Actual/predicted (scorecard)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>fit</td>
+<td style="text-align: right;">3,410,091</td>
+<td style="text-align: right;">35,753</td>
+<td style="text-align: right;">0.808</td>
+<td style="text-align: right;">0.646</td>
+<td style="text-align: right;">0.854</td>
+<td style="text-align: right;">1.00</td>
+</tr>
+<tr class="even">
+<td>holdout</td>
+<td style="text-align: right;">856,169</td>
+<td style="text-align: right;">8,686</td>
+<td style="text-align: right;">0.812</td>
+<td style="text-align: right;">0.654</td>
+<td style="text-align: right;">0.831</td>
+<td style="text-align: right;">0.96</td>
+</tr>
+<tr class="odd">
+<td>oot</td>
+<td style="text-align: right;">1,151,976</td>
+<td style="text-align: right;">5,082</td>
+<td style="text-align: right;">0.778</td>
+<td style="text-align: right;">0.632</td>
+<td style="text-align: right;">0.791</td>
+<td style="text-align: right;">0.54</td>
+</tr>
+</tbody>
+</table>
+<p>The out-of-time Gini’s 95% loan-clustered bootstrap interval is
+0.767–0.788. Score PSI between development and out-of-time is 0.072.</p>
+<p><strong>Robustness:</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Check</th>
+<th style="text-align: right;">Out-of-time Gini</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Calendar split (training snapshots ≤ 2013, testing ≥ 2015)</td>
+<td style="text-align: right;">0.772</td>
+</tr>
+<tr class="even">
+<td>Origination-only features</td>
+<td style="text-align: right;">0.483</td>
+</tr>
+<tr class="odd">
+<td>Loans current at the snapshot</td>
+<td style="text-align: right;">0.573</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Challenger.</strong> A monotone-constrained LightGBM adds
++0.013 Gini (D-016). The scorecard is retained for transparency and
+stability.</p>
+<p><strong>Calibration.</strong> Out-of-time actual/predicted is 0.54:
+the scorecard reflects through-the-cycle risk from a crisis-inclusive
+training period. A leakage-free recalibration test (fit on 2015–2017,
+test on 2019 onward) is documented (D-020). Point-in-time PD levels for
+CECL come from the macro-driven hazard, not the scorecard.</p>
+<figure>
+<img src="../../results/figures/pd_roc_calibration.png"
+alt="ROC and calibration" />
+<figcaption aria-hidden="true">ROC and calibration</figcaption>
+</figure>
+<h1 id="lifetime-default-and-prepayment-hazard">4. Lifetime default and
+prepayment hazard</h1>
+<p><strong>Specification (D-021, D-022).</strong> A monthly multinomial
+logit models survive, default and prepay as competing risks, giving S(t)
+= Π(1 − h_d − h_p).</p>
+<ul>
+<li><strong>Drivers:</strong> loan age (piecewise linear), origination
+risk (FICO, CLTV, DTI, rate spread, loan size, purpose, occupancy,
+single borrower), and three scenario variables:
+<ul>
+<li>unemployment (level and 4-quarter change, Fed definition);</li>
+<li>the refinance incentive against the mortgage rate;</li>
+<li>mark-to-market LTV from state house prices.</li>
+</ul></li>
+<li><strong>Estimation:</strong> choice-based sampling with corrected
+constants (D-023). COVID policy months are excluded from estimation
+(D-024), and there is no forbearance covariate (D-025).</li>
+</ul>
+<p><strong>Backtest.</strong> The development model is fitted through
+2017 and tested on held-out loans.</p>
+<ul>
+<li><strong>In-time:</strong> default actual/predicted 0.97, prepay
+1.01.</li>
+<li><strong>Out-of-time, 2018–2025:</strong> prepayment actual/predicted
+is 1.02. Default is 0.69 overall:
+<ul>
+<li>COVID policy months come in at 0.22;</li>
+<li>loans with forbearance history produce a large share of later
+defaults (handled as an overlay, D-026);</li>
+<li>for loans never in forbearance, post-COVID actual/predicted is 1.08,
+1.14 and 1.08 by vintage group.</li>
+</ul></li>
+</ul>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Year</th>
+<th style="text-align: right;">Defaults actual</th>
+<th style="text-align: right;">Defaults predicted</th>
+<th style="text-align: right;">Default A/P</th>
+<th style="text-align: right;">Prepay A/P</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>2018</td>
+<td style="text-align: right;">160</td>
+<td style="text-align: right;">149</td>
+<td style="text-align: right;">1.07</td>
+<td style="text-align: right;">1.02</td>
+</tr>
+<tr class="even">
+<td>2019</td>
+<td style="text-align: right;">124</td>
+<td style="text-align: right;">189</td>
+<td style="text-align: right;">0.65</td>
+<td style="text-align: right;">0.85</td>
+</tr>
+<tr class="odd">
+<td>2020</td>
+<td style="text-align: right;">116</td>
+<td style="text-align: right;">848</td>
+<td style="text-align: right;">0.14</td>
+<td style="text-align: right;">0.93</td>
+</tr>
+<tr class="even">
+<td>2021</td>
+<td style="text-align: right;">131</td>
+<td style="text-align: right;">237</td>
+<td style="text-align: right;">0.55</td>
+<td style="text-align: right;">0.98</td>
+</tr>
+<tr class="odd">
+<td>2022</td>
+<td style="text-align: right;">117</td>
+<td style="text-align: right;">55</td>
+<td style="text-align: right;">2.13</td>
+<td style="text-align: right;">1.27</td>
+</tr>
+<tr class="even">
+<td>2023</td>
+<td style="text-align: right;">132</td>
+<td style="text-align: right;">54</td>
+<td style="text-align: right;">2.45</td>
+<td style="text-align: right;">2.02</td>
+</tr>
+<tr class="odd">
+<td>2024</td>
+<td style="text-align: right;">171</td>
+<td style="text-align: right;">88</td>
+<td style="text-align: right;">1.93</td>
+<td style="text-align: right;">1.14</td>
+</tr>
+<tr class="even">
+<td>2025</td>
+<td style="text-align: right;">247</td>
+<td style="text-align: right;">116</td>
+<td style="text-align: right;">2.12</td>
+<td style="text-align: right;">1.13</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Stress sensitivities (production model):</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th>Shock</th>
+<th style="text-align: right;">Default multiplier</th>
+<th style="text-align: right;">Prepay multiplier</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Unemployment +2 pts</td>
+<td style="text-align: right;">1.56</td>
+<td style="text-align: right;">1.12</td>
+</tr>
+<tr class="even">
+<td>House prices −20%</td>
+<td style="text-align: right;">1.54</td>
+<td style="text-align: right;">0.76</td>
+</tr>
+<tr class="odd">
+<td>Mortgage rate −1 pt</td>
+<td style="text-align: right;">1.19</td>
+<td style="text-align: right;">1.71</td>
+</tr>
+</tbody>
+</table>
+<figure>
+<img src="../../results/figures/hazard_backtest.png"
+alt="Hazard backtest" />
+<figcaption aria-hidden="true">Hazard backtest</figcaption>
+</figure>
+<h1 id="loss-given-default-and-exposure-at-default">5. Loss given
+default and exposure at default</h1>
+<p><strong>Structure (D-027).</strong> E[LGD] = (1 − P(cure)) ×
+E[severity | liquidation], developed on resolved defaults through
+2021.</p>
+<ul>
+<li><strong>Severity:</strong> measured on principal, with UPB at
+default as the denominator, undiscounted (D-029).</li>
+<li><strong>Drivers:</strong> mark-to-market LTV at default, the forward
+12-month house-price path (D-030), real (HPI-deflated) loan size
+(D-041), MI coverage, foreclosure timeline, and property and occupancy
+type.</li>
+<li><strong>Cure model:</strong> adds a post-2013 servicing-regime
+indicator; unemployment is excluded (D-031).</li>
+</ul>
+<p><strong>Results.</strong></p>
+<ul>
+<li><strong>In-sample (defaults ≤ 2016):</strong> LGD 17.8% actual vs
+17.5% predicted.</li>
+<li><strong>Out-of-time (2017–2021):</strong> the model is conservative.
+<ul>
+<li>severity 32.2% predicted vs 23.5% actual;</li>
+<li>LGD 5.6% predicted vs 2.0% actual.</li>
+</ul></li>
+<li><strong>Stress response:</strong> house prices −20% at default raise
+LGD ×1.87.</li>
+<li><strong>EAD (D-032):</strong> actual UPB at default / scheduled
+balance 12 months earlier = 1.003 (43,586 defaults).</li>
+</ul>
+<table>
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Default year</th>
+<th style="text-align: right;">Cure act.</th>
+<th style="text-align: right;">Cure pred.</th>
+<th style="text-align: right;">Severity act.</th>
+<th style="text-align: right;">Severity pred.</th>
+<th style="text-align: right;">LGD act.</th>
+<th style="text-align: right;">LGD pred.</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>2003</td>
+<td style="text-align: right;">65%</td>
+<td style="text-align: right;">65%</td>
+<td style="text-align: right;">18%</td>
+<td style="text-align: right;">28%</td>
+<td style="text-align: right;">4.8%</td>
+<td style="text-align: right;">7.3%</td>
+</tr>
+<tr class="even">
+<td>2006</td>
+<td style="text-align: right;">63%</td>
+<td style="text-align: right;">63%</td>
+<td style="text-align: right;">34%</td>
+<td style="text-align: right;">36%</td>
+<td style="text-align: right;">9.1%</td>
+<td style="text-align: right;">10.4%</td>
+</tr>
+<tr class="odd">
+<td>2008</td>
+<td style="text-align: right;">35%</td>
+<td style="text-align: right;">44%</td>
+<td style="text-align: right;">43%</td>
+<td style="text-align: right;">44%</td>
+<td style="text-align: right;">27.6%</td>
+<td style="text-align: right;">23.1%</td>
+</tr>
+<tr class="even">
+<td>2009</td>
+<td style="text-align: right;">45%</td>
+<td style="text-align: right;">45%</td>
+<td style="text-align: right;">44%</td>
+<td style="text-align: right;">41%</td>
+<td style="text-align: right;">21.9%</td>
+<td style="text-align: right;">20.0%</td>
+</tr>
+<tr class="odd">
+<td>2010</td>
+<td style="text-align: right;">48%</td>
+<td style="text-align: right;">42%</td>
+<td style="text-align: right;">42%</td>
+<td style="text-align: right;">43%</td>
+<td style="text-align: right;">19.5%</td>
+<td style="text-align: right;">22.2%</td>
+</tr>
+<tr class="even">
+<td>2012</td>
+<td style="text-align: right;">48%</td>
+<td style="text-align: right;">51%</td>
+<td style="text-align: right;">36%</td>
+<td style="text-align: right;">34%</td>
+<td style="text-align: right;">16.5%</td>
+<td style="text-align: right;">14.2%</td>
+</tr>
+<tr class="odd">
+<td>2015</td>
+<td style="text-align: right;">64%</td>
+<td style="text-align: right;">61%</td>
+<td style="text-align: right;">37%</td>
+<td style="text-align: right;">38%</td>
+<td style="text-align: right;">9.5%</td>
+<td style="text-align: right;">11.3%</td>
+</tr>
+<tr class="even">
+<td>2017</td>
+<td style="text-align: right;">78%</td>
+<td style="text-align: right;">67%</td>
+<td style="text-align: right;">28%</td>
+<td style="text-align: right;">34%</td>
+<td style="text-align: right;">4.1%</td>
+<td style="text-align: right;">7.9%</td>
+</tr>
+<tr class="odd">
+<td>2019</td>
+<td style="text-align: right;">83%</td>
+<td style="text-align: right;">68%</td>
+<td style="text-align: right;">21%</td>
+<td style="text-align: right;">33%</td>
+<td style="text-align: right;">1.9%</td>
+<td style="text-align: right;">6.7%</td>
+</tr>
+<tr class="even">
+<td>2021</td>
+<td style="text-align: right;">93%</td>
+<td style="text-align: right;">79%</td>
+<td style="text-align: right;">19%</td>
+<td style="text-align: right;">26%</td>
+<td style="text-align: right;">0.6%</td>
+<td style="text-align: right;">2.8%</td>
+</tr>
+</tbody>
+</table>
+<figure>
+<img src="../../results/figures/lgd_backtest.png" alt="LGD backtest" />
+<figcaption aria-hidden="true">LGD backtest</figcaption>
+</figure>
+<h1 id="cecl-allowance">6. CECL allowance</h1>
+<p><strong>Method.</strong> Each loan is projected monthly to maturity,
+with expected loss = survival × default hazard × LGD × scheduled
+balance.</p>
+<ul>
+<li><strong>Contractual term:</strong> adjusted for expected prepayments
+through the competing-risk hazard.</li>
+<li><strong>Scenarios (D-033):</strong> three, built from the Fed’s 2026
+scenarios. The baseline is the Fed baseline; the downside is halfway to
+the severely adverse scenario; the upside is the mirror of the downside,
+with unemployment floored.</li>
+<li><strong>Weights:</strong> 50% / 30% / 20% (baseline / downside /
+upside).</li>
+<li><strong>Forecast horizon:</strong> a reasonable-and-supportable
+period of 8 quarters (D-034), then 4-quarter straight-line reversion to
+the historical annual loss rate of 0.145% (2000–2021, D-035).</li>
+<li><strong>Overlays (D-036):</strong> loans that are delinquent or have
+a forbearance or prior-default history at the as-of date get hazard
+multipliers, calibrated relative to clean loans on past year-ends. Loans
+already in default take LGD only.</li>
+</ul>
+<p>The ACL is undiscounted (a non-DCF method) on the sample portfolio
+(D-037).</p>
+<table>
+<colgroup>
+<col style="width: 11%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Scenario</th>
+<th style="text-align: right;">Weight</th>
+<th style="text-align: right;">ACL (main)</th>
+<th style="text-align: right;">ACL (model only)</th>
+<th style="text-align: right;">Lifetime PD</th>
+<th style="text-align: right;">Avg LGD</th>
+<th style="text-align: right;">WAL (yrs)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>baseline</td>
+<td style="text-align: right;">50%</td>
+<td style="text-align: right;">0.65%</td>
+<td style="text-align: right;">0.27%</td>
+<td style="text-align: right;">6.2%</td>
+<td style="text-align: right;">5.2%</td>
+<td style="text-align: right;">5.2</td>
+</tr>
+<tr class="even">
+<td>downside</td>
+<td style="text-align: right;">30%</td>
+<td style="text-align: right;">0.90%</td>
+<td style="text-align: right;">0.56%</td>
+<td style="text-align: right;">8.1%</td>
+<td style="text-align: right;">8.1%</td>
+<td style="text-align: right;">5.5</td>
+</tr>
+<tr class="odd">
+<td>upside</td>
+<td style="text-align: right;">20%</td>
+<td style="text-align: right;">0.54%</td>
+<td style="text-align: right;">0.17%</td>
+<td style="text-align: right;">5.2%</td>
+<td style="text-align: right;">3.8%</td>
+<td style="text-align: right;">5.0</td>
+</tr>
+<tr class="even">
+<td><strong>weighted</strong></td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;"><strong>0.70%</strong></td>
+<td style="text-align: right;">0.34%</td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+</tr>
+</tbody>
+</table>
+<p><strong>By segment and the Jan–Jun 2026 backtest.</strong> This is
+data never used in development. Over all segments, actual defaults were
+1,858 against 2,667 predicted, and prepayments came in at 0.87×
+predicted.</p>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Segment at as-of</th>
+<th style="text-align: right;">Loans</th>
+<th style="text-align: right;">ACL % of UPB</th>
+<th style="text-align: right;">Jan-Jun 2026 defaults, actual</th>
+<th style="text-align: right;">predicted</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>S0_clean</td>
+<td style="text-align: right;">325,230</td>
+<td style="text-align: right;">0.61%</td>
+<td style="text-align: right;">322</td>
+<td style="text-align: right;">1,054</td>
+</tr>
+<tr class="even">
+<td>S1_history</td>
+<td style="text-align: right;">15,350</td>
+<td style="text-align: right;">1.10%</td>
+<td style="text-align: right;">196</td>
+<td style="text-align: right;">398</td>
+</tr>
+<tr class="odd">
+<td>S2_dpd30</td>
+<td style="text-align: right;">3,674</td>
+<td style="text-align: right;">3.14%</td>
+<td style="text-align: right;">551</td>
+<td style="text-align: right;">594</td>
+</tr>
+<tr class="even">
+<td>S3_dpd60</td>
+<td style="text-align: right;">957</td>
+<td style="text-align: right;">5.16%</td>
+<td style="text-align: right;">524</td>
+<td style="text-align: right;">383</td>
+</tr>
+<tr class="odd">
+<td>S4_default</td>
+<td style="text-align: right;">1,812</td>
+<td style="text-align: right;">6.77%</td>
+<td style="text-align: right;">n/a</td>
+<td style="text-align: right;">n/a (PD = 1)</td>
+</tr>
+<tr class="even">
+<td>S5_forb_dq</td>
+<td style="text-align: right;">590</td>
+<td style="text-align: right;">4.54%</td>
+<td style="text-align: right;">265</td>
+<td style="text-align: right;">238</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Sensitivity.</strong> The historical loss window dominates;
+weights, R&amp;S length and reversion speed matter far less.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Case</th>
+<th style="text-align: right;">ACL % of UPB</th>
+<th style="text-align: right;">vs main</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>main</td>
+<td style="text-align: right;">0.70%</td>
+<td style="text-align: right;">+0%</td>
+</tr>
+<tr class="even">
+<td>model-only (input reversion)</td>
+<td style="text-align: right;">0.34%</td>
+<td style="text-align: right;">-52%</td>
+</tr>
+<tr class="odd">
+<td>historical loss window 2012-2021 (0.057%/yr)</td>
+<td style="text-align: right;">0.41%</td>
+<td style="text-align: right;">-42%</td>
+</tr>
+<tr class="even">
+<td>historical loss window 2000-2006 (0.033%/yr)</td>
+<td style="text-align: right;">0.33%</td>
+<td style="text-align: right;">-53%</td>
+</tr>
+<tr class="odd">
+<td>historical loss window 2008-2012 (0.501%/yr)</td>
+<td style="text-align: right;">1.88%</td>
+<td style="text-align: right;">+168%</td>
+</tr>
+<tr class="even">
+<td>weights equal</td>
+<td style="text-align: right;">0.70%</td>
+<td style="text-align: right;">-1%</td>
+</tr>
+<tr class="odd">
+<td>weights base_heavy</td>
+<td style="text-align: right;">0.69%</td>
+<td style="text-align: right;">-2%</td>
+</tr>
+<tr class="even">
+<td>weights downside_heavy</td>
+<td style="text-align: right;">0.76%</td>
+<td style="text-align: right;">+9%</td>
+</tr>
+<tr class="odd">
+<td>no overlays (model only for delinquent/history loans)</td>
+<td style="text-align: right;">0.65%</td>
+<td style="text-align: right;">-7%</td>
+</tr>
+<tr class="even">
+<td>R&amp;S 4 quarters</td>
+<td style="text-align: right;">0.72%</td>
+<td style="text-align: right;">+2%</td>
+</tr>
+<tr class="odd">
+<td>R&amp;S 12 quarters</td>
+<td style="text-align: right;">0.66%</td>
+<td style="text-align: right;">-6%</td>
+</tr>
+<tr class="even">
+<td>reversion 0 quarters</td>
+<td style="text-align: right;">0.71%</td>
+<td style="text-align: right;">+2%</td>
+</tr>
+<tr class="odd">
+<td>reversion 8 quarters</td>
+<td style="text-align: right;">0.69%</td>
+<td style="text-align: right;">-1%</td>
+</tr>
+<tr class="even">
+<td>downside = 100% of severely adverse</td>
+<td style="text-align: right;">0.86%</td>
+<td style="text-align: right;">+23%</td>
+</tr>
+</tbody>
+</table>
+<figure>
+<img src="../../results/figures/acl_by_scenario.png"
+alt="ACL by scenario" />
+<figcaption aria-hidden="true">ACL by scenario</figcaption>
+</figure>
+<figure>
+<img src="../../results/figures/cecl_loss_timing.png"
+alt="Loss timing" />
+<figcaption aria-hidden="true">Loss timing</figcaption>
+</figure>
+<h1 id="dfast-stress-projection">7. DFAST stress projection</h1>
+<p>The portfolio as of 202512 is projected over 2026Q1–2028Q1 under the
+Fed’s published baseline and severely adverse paths (D-038). The
+severely adverse path peaks at 10.0% unemployment, with a national
+house-price change of -30% at the trough. The loss rate follows the Fed
+definition: cumulative loss over average balance.</p>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 26%" />
+<col style="width: 26%" />
+<col style="width: 26%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th style="text-align: right;">Baseline</th>
+<th style="text-align: right;">Severely adverse</th>
+<th style="text-align: right;">Severely adverse, no servicing
+regime</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>9-quarter loss rate (Fed definition)</td>
+<td style="text-align: right;">0.21%</td>
+<td style="text-align: right;">1.02%</td>
+<td style="text-align: right;">1.23%</td>
+</tr>
+<tr class="even">
+<td>LGD on defaults</td>
+<td style="text-align: right;">6.2%</td>
+<td style="text-align: right;">14.3%</td>
+<td style="text-align: right;">17.2%</td>
+</tr>
+<tr class="odd">
+<td>Cumulative default rate</td>
+<td style="text-align: right;">2.7%</td>
+<td style="text-align: right;">5.2%</td>
+<td style="text-align: right;"></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Crisis replay (D-039).</strong> The Dec-2007 portfolio is run
+on the realized 2008–2010 path: predicted 1.88% vs actual 1.88%, with
+LGD 21.6% vs 22.9%. The models were estimated on data that includes this
+period, so the replay validates aggregation and calibration under
+stress, not out-of-sample forecasting.</p>
+<p><strong>Benchmark.</strong> The severely adverse loss rate is 0.68×
+the Fed’s all-bank first-lien figure. The differences are expected:</p>
+<ul>
+<li>this is a GSE conforming book, with MI on high-LTV loans;</li>
+<li>the servicing-regime assumption keeps cure rates high;</li>
+<li>the models are different.</li>
+</ul>
+<p><strong>Downturn LGD (D-040).</strong> Severely adverse LGD remains
+below the realized 2008–2010 LGD (22.1%). Switching off the servicing
+regime is reported as the downturn sensitivity.</p>
+<figure>
+<img src="../../results/figures/dfast_losses.png" alt="DFAST losses" />
+<figcaption aria-hidden="true">DFAST losses</figcaption>
+</figure>
+<h1 id="validation-evidence-and-traceability">8. Validation evidence and
+traceability</h1>
+<p>The test suite has 41 of 41 tests passing (<code>pytest</code>). They
+cover:</p>
+<ul>
+<li>target definitions on hand-built loans;</li>
+<li>the layout contract;</li>
+<li>metric functions against independent references;</li>
+<li>scorecard mechanics;</li>
+<li>sampling correction;</li>
+<li>the projection engine against a closed form;</li>
+<li>reversion blending;</li>
+<li>the number guardrail and its retry loop.</li>
+</ul>
+<p>Each regulatory requirement below is mapped to its implementation,
+tests and evidence (D-045). Assessments are the developer’s own.</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+<col style="width: 14%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Source</th>
+<th>Requirement</th>
+<th>Implementation</th>
+<th>Tests</th>
+<th>Evidence retrieved</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>R01</td>
+<td>SR2602a1.pdf p.6</td>
+<td>Model testing should include out-of-sample and out-of-time
+testing.</td>
+<td>Vintage-based OOT split (D-008, D-012); hazard and LGD OOT backtests
+(D-021, D-027)</td>
+<td>pass</td>
+<td>no</td>
+<td>Met</td>
+</tr>
+<tr class="even">
+<td>R02</td>
+<td>SR2602a1.pdf p.6</td>
+<td>Testing should include a critical assessment of data quality,
+relevance, and inputs.</td>
+<td>Strict schema casting, duplicate/gap/ID checks, loss identity
+reconciliation (D-002, D-011)</td>
+<td>pass</td>
+<td>no</td>
+<td>Met</td>
+</tr>
+<tr class="odd">
+<td>R03</td>
+<td>SR2602a1.pdf p.6</td>
+<td>Testing should compare alternative assumptions and
+methodologies.</td>
+<td>LightGBM challenger (D-016); strict vs ex-forbearance default
+definitions (D-004); input vs output reversion (D-035)</td>
+<td>pass</td>
+<td>no</td>
+<td>Met</td>
+</tr>
+<tr class="even">
+<td>R04</td>
+<td>SR2602a1.pdf p.8</td>
+<td>Validation of conceptual soundness assesses and documents design,
+key modeling choices, assumptions and data selection.</td>
+<td>DECISIONS.md with rejected alternatives; coefficient sign checks
+(D-015, D-022)</td>
+<td>pass</td>
+<td>yes</td>
+<td>Met</td>
+</tr>
+<tr class="odd">
+<td>R05</td>
+<td>SR2602a1.pdf p.9</td>
+<td>Outcomes analysis compares model outputs with real-world outcomes,
+including back-testing.</td>
+<td>Jan-Jun 2026 CECL backtest (D-036); 2008-2010 crisis replay
+(D-039)</td>
+<td>pass</td>
+<td>yes</td>
+<td>Met</td>
+</tr>
+<tr class="even">
+<td>R06</td>
+<td>SR2602a1.pdf p.8</td>
+<td>Benchmarking to other models may be a practical validation
+assessment.</td>
+<td>Challenger model (D-016); Fed 2026 first-lien benchmark (D-038)</td>
+<td>pass</td>
+<td>yes</td>
+<td>Met</td>
+</tr>
+<tr class="odd">
+<td>R07</td>
+<td>SR2602a1.pdf p.9</td>
+<td>Ongoing monitoring evaluates whether the model performs as expected
+as conditions change.</td>
+<td>Score PSI and per-feature CSI (D-017); calibration by snapshot
+year</td>
+<td>pass</td>
+<td>yes</td>
+<td>Partially met</td>
+</tr>
+<tr class="even">
+<td>R08</td>
+<td>SR2602a1.pdf p.3</td>
+<td>Generative and agentic AI are outside the guidance; governance and
+controls should still be determined for such tools.</td>
+<td>LLM writes narrative only; number guardrail and citation check
+(D-043)</td>
+<td>pass</td>
+<td>yes</td>
+<td>Met</td>
+</tr>
+<tr class="odd">
+<td>R09</td>
+<td>SR2602a1.pdf p.11</td>
+<td>Adequate documentation supports continuity and tracking of
+recommendations and exceptions.</td>
+<td>DECISIONS.md, metrics.json, MDD draft, this matrix</td>
+<td>pass</td>
+<td>no</td>
+<td>Met</td>
+</tr>
+<tr class="even">
+<td>R10</td>
+<td>acl_policy_statement_2023.pdf p.3,4</td>
+<td>Expected credit losses are estimated over the contractual term,
+considering expected prepayments.</td>
+<td>Competing-risk hazard; engine projects to maturity with prepayment
+(D-021)</td>
+<td>pass</td>
+<td>no</td>
+<td>Met</td>
+</tr>
+<tr class="odd">
+<td>R11</td>
+<td>acl_policy_statement_2023.pdf p.3,4</td>
+<td>Estimates consider past events, current conditions, and reasonable
+and supportable forecasts.</td>
+<td>Fed-based scenarios over an 8-quarter R&amp;S period (D-033,
+D-034)</td>
+<td>pass</td>
+<td>yes</td>
+<td>Met</td>
+</tr>
+<tr class="even">
+<td>R12</td>
+<td>acl_policy_statement_2023.pdf p.4</td>
+<td>Beyond the R&amp;S period, revert to historical loss information
+using a systematic, rational method.</td>
+<td>4-quarter straight-line output reversion; input reversion as
+sensitivity (D-035)</td>
+<td>pass</td>
+<td>yes</td>
+<td>Met</td>
+</tr>
+<tr class="odd">
+<td>R13</td>
+<td>acl_policy_statement_2023.pdf p.4</td>
+<td>Multiple economic scenarios may be considered.</td>
+<td>Probability-weighted baseline/downside/upside (D-033)</td>
+<td>pass</td>
+<td>no</td>
+<td>Met</td>
+</tr>
+<tr class="even">
+<td>R14</td>
+<td>acl_policy_statement_2023.pdf p.4</td>
+<td>Historical loss information is adjusted for differences in current
+conditions, e.g. delinquency.</td>
+<td>Delinquency and forbearance overlays calibrated on past year-ends
+(D-036)</td>
+<td>pass</td>
+<td>yes</td>
+<td>Met</td>
+</tr>
+<tr class="odd">
+<td>R15</td>
+<td>acl_policy_statement_2023.pdf p.5</td>
+<td>Collateral-dependent loans are measured at fair value of collateral
+less costs to sell.</td>
+<td>Loans in default take PD = 1 and the LGD model (severity includes
+selling and carrying costs)</td>
+<td>pass</td>
+<td>yes</td>
+<td>Partially met</td>
+</tr>
+<tr class="even">
+<td>R16</td>
+<td>2026_final_scenarios.pdf p.13</td>
+<td>Supervisory projections use the published scenarios over the
+projection horizon.</td>
+<td>Fed 2026 baseline and severely adverse paths, 9 quarters
+(D-038)</td>
+<td>pass</td>
+<td>no</td>
+<td>Met</td>
+</tr>
+</tbody>
+</table>
+<h1 id="limitations-assumptions-and-use-restrictions">9. Limitations,
+assumptions and use restrictions</h1>
+<ol type="1">
+<li><strong>Portfolio coverage.</strong> GSE conforming loans with MI on
+high-LTV loans; not representative of jumbo, portfolio or subprime
+books.</li>
+<li><strong>Forbearance.</strong> Forbearance and disaster flags exist
+only from 2014, so earlier relief episodes follow the strict default
+definition.</li>
+<li><strong>Through-the-cycle levels.</strong> The hazard over-predicts
+clean-loan defaults in benign years (calibration-year actual/predicted
+0.48), which is conservative.</li>
+<li><strong>LGD.</strong> Conservative in 2017–2021. It relies on a
+servicing-regime assumption never observed in a severe recession, and
+stress LGD stays below the 2008 peak unless that assumption is switched
+off.</li>
+<li><strong>Reversion.</strong> The allowance is highly sensitive to the
+historical loss window; that choice belongs to the allowance
+committee.</li>
+<li><strong>Residual era proxy.</strong> The hazard model still uses
+nominal loan size (small coefficients, clean out-of-time backtest).</li>
+<li><strong>COVID.</strong> Policy months are excluded from estimation.
+If similar policy support recurs, the model will overstate losses, which
+is a qualitative-adjustment matter.</li>
+<li><strong>Sample portfolio.</strong> Dollar amounts refer to the
+Freddie Mac sample; ratios are the meaningful outputs.</li>
+<li><strong>Use restriction.</strong> Not validated for jumbo, HELOC or
+commercial portfolios, or for horizons beyond the projection engine’s
+360-month cap.</li>
+</ol>
+<h1 id="ongoing-monitoring-plan">10. Ongoing monitoring plan</h1>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Watch</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Score PSI (development vs current)</td>
+<td>&gt; 0.1</td>
+<td>&gt; 0.25: investigate and consider redevelopment</td>
+</tr>
+<tr class="even">
+<td>Out-of-time Gini</td>
+<td>—</td>
+<td>Drop &gt; 0.05 vs 0.778</td>
+</tr>
+<tr class="odd">
+<td>Actual/predicted defaults and prepayments by segment</td>
+<td>Outside 0.8–1.25 for two consecutive quarters</td>
+<td>Recalibrate overlay or hazard</td>
+</tr>
+<tr class="even">
+<td>LGD actual/predicted on resolved defaults</td>
+<td>Outside 0.8–1.25</td>
+<td>Review servicing regime and severity drivers</td>
+</tr>
+</tbody>
+</table>
+<p>Monitoring frequency: quarterly.</p>
+<h1 id="llm-reporting-layer-supporting-tool-not-a-model-input">11. LLM
+reporting layer (supporting tool, not a model input)</h1>
+<p>A local LLM (Ollama, <code>qwen3:8b</code>, embeddings
+<code>nomic-embed-text</code>, FAISS) supports documentation.</p>
+<ul>
+<li><strong>Regulatory Q&amp;A</strong> is retrieval-augmented over the
+indexed sources.</li>
+<li><strong>Draft narrative:</strong> the LLM drafts narrative from
+code-formatted facts, under a number guardrail and a citation check
+(D-043).</li>
+<li><strong>Out of scope for SR 26-2:</strong> generative AI falls
+outside the guidance (SR 26-2), so the control is the guardrail plus a
+logged human review.</li>
+</ul>
+<p><strong>Result of that review:</strong> drafts that passed the
+automated checks still contained inverted interpretations and
+misattributed regulatory support (<code>docs/mdd/review_log.md</code>,
+D-047). No LLM-drafted text is used in this document.</p>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th style="text-align: right;">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Questions (facts verified on gold pages)</td>
+<td style="text-align: right;">52</td>
+</tr>
+<tr class="even">
+<td>Retrieval hit@1 / hit@5 / MRR (dense)</td>
+<td style="text-align: right;">58% / 88% / 0.69</td>
+</tr>
+<tr class="odd">
+<td>Retrieval hit@1 / hit@5 / MRR (hybrid BM25, rejected)</td>
+<td style="text-align: right;">56% / 81% / 0.66</td>
+</tr>
+<tr class="even">
+<td>Key-fact recall (mean / all facts)</td>
+<td style="text-align: right;">77% / 67%</td>
+</tr>
+<tr class="odd">
+<td>Sentence support (faithfulness proxy)</td>
+<td style="text-align: right;">98%</td>
+</tr>
+<tr class="even">
+<td>Answers with numbers grounded in context</td>
+<td style="text-align: right;">94%</td>
+</tr>
+<tr class="odd">
+<td>Answers with valid citations</td>
+<td style="text-align: right;">100%</td>
+</tr>
+</tbody>
+</table>
+<h1 id="appendix-a.-decision-index">Appendix A. Decision index</h1>
+<p>47 documented decisions, each with rejected alternatives in
+<code>DECISIONS.md</code>.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>ID</th>
+<th>Decision</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>D-001</td>
+<td>Use the Freddie Mac SFLLD <em>sample</em> files, Release 48</td>
+</tr>
+<tr class="even">
+<td>D-002</td>
+<td>Convert once to typed parquet with strict casting</td>
+</tr>
+<tr class="odd">
+<td>D-003</td>
+<td>Default event definition</td>
+</tr>
+<tr class="even">
+<td>D-004</td>
+<td>Exclude 90+ DPD months during forbearance
+(<code>default_definition: ex_forbearance</code>)</td>
+</tr>
+<tr class="odd">
+<td>D-005</td>
+<td>Prepayment vs maturity</td>
+</tr>
+<tr class="even">
+<td>D-006</td>
+<td>Censoring</td>
+</tr>
+<tr class="odd">
+<td>D-007</td>
+<td>12-month PD dataset: yearly snapshots by loan age</td>
+</tr>
+<tr class="even">
+<td>D-008</td>
+<td>Out-of-time split (to be implemented in Phase 2)</td>
+</tr>
+<tr class="odd">
+<td>D-009</td>
+<td>National macro drivers from the Fed’s own historic series</td>
+</tr>
+<tr class="even">
+<td>D-010</td>
+<td>As-of date 2025-12-31 for CECL and DFAST</td>
+</tr>
+<tr class="odd">
+<td>D-011</td>
+<td>Data-quality findings accepted as-is</td>
+</tr>
+<tr class="even">
+<td>D-012</td>
+<td>Samples: fit / in-time holdout / out-of-time</td>
+</tr>
+<tr class="odd">
+<td>D-013</td>
+<td>Features: only what is known at the snapshot date</td>
+</tr>
+<tr class="even">
+<td>D-014</td>
+<td>Binning: monotonic WoE with optbinning</td>
+</tr>
+<tr class="odd">
+<td>D-015</td>
+<td>Feature selection</td>
+</tr>
+<tr class="even">
+<td>D-016</td>
+<td>Challenger: LightGBM on raw features</td>
+</tr>
+<tr class="odd">
+<td>D-017</td>
+<td>Validation metrics</td>
+</tr>
+<tr class="even">
+<td>D-018</td>
+<td>Minimum bin size exception for rare, high-risk states (bug fix)</td>
+</tr>
+<tr class="odd">
+<td>D-019</td>
+<td>Exclude original note rate and channel (era proxies)</td>
+</tr>
+<tr class="even">
+<td>D-020</td>
+<td>Recalibrate PD levels on a recent window (scorecard ranking
+kept)</td>
+</tr>
+<tr class="odd">
+<td>D-021</td>
+<td>Discrete-time multinomial logit hazard on the loan-month panel</td>
+</tr>
+<tr class="even">
+<td>D-022</td>
+<td>Only projectable drivers</td>
+</tr>
+<tr class="odd">
+<td>D-023</td>
+<td>Choice-based sampling with constant correction</td>
+</tr>
+<tr class="even">
+<td>D-024</td>
+<td>Exclude March 2020 – December 2021 from estimation</td>
+</tr>
+<tr class="odd">
+<td>D-025</td>
+<td>No forbearance covariate</td>
+</tr>
+<tr class="even">
+<td>D-026</td>
+<td>Forbearance history and delinquency at the forecast date are
+overlays</td>
+</tr>
+<tr class="odd">
+<td>D-027</td>
+<td>Two-part LGD on resolved defaults through 2021</td>
+</tr>
+<tr class="even">
+<td>D-028</td>
+<td>Code 16 (reperforming-loan sale) counts as a cure</td>
+</tr>
+<tr class="odd">
+<td>D-029</td>
+<td>Severity on principal, UPB at default as the denominator</td>
+</tr>
+<tr class="even">
+<td>D-030</td>
+<td>Forward house-price change as an LGD driver</td>
+</tr>
+<tr class="odd">
+<td>D-031</td>
+<td>Servicing-regime indicator; unemployment removed from the cure
+model</td>
+</tr>
+<tr class="even">
+<td>D-032</td>
+<td>EAD = scheduled amortization balance</td>
+</tr>
+<tr class="odd">
+<td>D-033</td>
+<td>Three probability-weighted scenarios built from the Fed’s 2026
+scenarios</td>
+</tr>
+<tr class="even">
+<td>D-034</td>
+<td>Reasonable-and-supportable period: 8 quarters</td>
+</tr>
+<tr class="odd">
+<td>D-035</td>
+<td>Reversion: straight-line over 4 quarters to the historical loss
+rate</td>
+</tr>
+<tr class="even">
+<td>D-036</td>
+<td>Overlays for delinquency and history at the as-of date</td>
+</tr>
+<tr class="odd">
+<td>D-037</td>
+<td>Undiscounted, sample-portfolio allowance</td>
+</tr>
+<tr class="even">
+<td>D-041</td>
+<td>Loan size in real terms in the LGD model (correction found in Phase
+6)</td>
+</tr>
+<tr class="odd">
+<td>D-038</td>
+<td>Supervisory projection setup</td>
+</tr>
+<tr class="even">
+<td>D-039</td>
+<td>Crisis replay as the stress-engine validation</td>
+</tr>
+<tr class="odd">
+<td>D-040</td>
+<td>Downturn LGD and the servicing-regime assumption</td>
+</tr>
+<tr class="even">
+<td>D-042</td>
+<td>Local open-source stack only</td>
+</tr>
+<tr class="odd">
+<td>D-043</td>
+<td>The LLM never produces numbers: guardrail + citation check</td>
+</tr>
+<tr class="even">
+<td>D-044</td>
+<td>Evaluation design</td>
+</tr>
+<tr class="odd">
+<td>D-045</td>
+<td>Traceability matrix</td>
+</tr>
+<tr class="even">
+<td>D-046</td>
+<td>Dense retrieval kept; hybrid BM25 rejected</td>
+</tr>
+<tr class="odd">
+<td>D-047</td>
+<td>The guardrail is necessary but not sufficient: human review is the
+control</td>
+</tr>
+</tbody>
+</table>
+<h1 id="appendix-b.-reproducibility">Appendix B. Reproducibility</h1>
+<ul>
+<li><strong>Run:</strong> <code>make all</code> reruns phases 1–6 and
+the tests from raw data; <code>make llm</code> reruns the LLM layer;
+<code>make reports</code> renders this document.</li>
+<li><strong>Inputs:</strong> every parameter, path, URL and the random
+seed (20261110) are in <code>config.yaml</code>.</li>
+<li><strong>Downloads:</strong> public files are hashed in
+<code>data/raw/manifest_public.json</code>.</li>
+<li><strong>Data:</strong> raw data is not distributed (Freddie Mac
+terms); see the README for download steps.</li>
+</ul>
+</body>
+</html>

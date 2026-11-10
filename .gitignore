@@ -1,0 +1,15 @@
+# Raw and derived data are never committed (Freddie Mac SFLLD terms forbid redistribution;
+# FASB material is copyrighted). Root-anchored: a bare 'data/' would also ignore
+# src/cecl/data/ (the data-pipeline package); found by the Phase 8 fresh-copy test.
+/data/
+# Python / tooling
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.DS_Store
+
+# Private interview notes and their PDF: never committed
+/private/

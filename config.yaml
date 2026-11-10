@@ -1,0 +1,211 @@
+# Single source of truth for every parameter in the pipeline.
+# Nothing downstream may hardcode a path, date, threshold or seed.
+
+seed: 20261110
+
+paths:
+  raw_freddie: data/raw/freddie
+  raw_macro: data/raw/macro
+  raw_dfast: data/raw/dfast/2026
+  raw_docs: data/raw/docs
+  interim: data/interim
+  processed: data/processed
+  results: results
+  metrics: results/metrics.json
+  figures: results/figures
+  tables: results/tables
+
+data:
+  vintages: [1999, 2026]          # inclusive range of sample files to convert
+  performance_cutoff: 202606      # last reporting month in Release 48 (verified in QC)
+  # Zero balance codes (General User Guide, Release 48)
+  zb_prepay: ["01"]               # prepaid or matured (maturity split out via loan age)
+  zb_default: ["02", "03", "09", "15"]   # third-party sale, short sale/charge-off, REO, whole-loan sale
+  zb_censor: ["16", "96"]         # reperforming securitization, defect: not credit outcomes
+  dpd_default_threshold: 3        # delinquency status >= 3 means 90+ days past due
+  default_definition: ex_forbearance   # or 'spec' (any 90+ DPD); see DECISIONS.md D-004
+  default_horizon_months: 12      # PD target window
+  snapshot_every_months: 12       # snapshot spacing for the 12-month PD dataset
+  covid_window: [202003, 202112]  # months flagged for forbearance-distortion sensitivity
+
+downloads:
+  freddie_docs:
+    user_guide.pdf: https://www.freddiemac.com/fmac-resources/research/pdf/user_guide.pdf
+    faq.pdf: https://www.freddiemac.com/fmac-resources/research/pdf/faq.pdf
+    terms_conditions.pdf: https://capitalmarkets.freddiemac.com/crt/docs/pdfs/fre_terms_conditions_sflld.pdf
+  dfast:
+    2026_Final_Historic_Domestic.csv: https://www.federalreserve.gov/supervisionreg/files/2026_Final_Historic_Domestic.csv
+    2026_Final_Supervisory_Baseline_Domestic.csv: https://www.federalreserve.gov/supervisionreg/files/2026_Final_Supervisory_Baseline_Domestic.csv
+    2026_Final_Supervisory_Severely_Adverse_Domestic.csv: https://www.federalreserve.gov/supervisionreg/files/2026_Final_Supervisory_Severely_Adverse_Domestic.csv
+    domestic-data-definitions-2025.pdf: https://www.federalreserve.gov/supervisionreg/files/domestic-data-definitions-2025.pdf
+  fred_series: [MORTGAGE30US, UNRATE, USREC]
+  fred_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}
+  fmhpi_page: https://www.freddiemac.com/research/indices/house-price-index
+  macro_files:
+    fmhpi_master_file.csv: https://www.freddiemac.com/fmac-resources/research/docs/fmhpi_master_file.csv
+  docs:
+    SR2602.htm: https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm
+    SR2602a1.pdf: https://www.federalreserve.gov/supervisionreg/srletters/SR2602a1.pdf
+    # SR 11-7 is not listed: the Fed removed it after SR 26-2 superseded it (404 as of 2026-11-10).
+    SR2012.htm: https://www.federalreserve.gov/supervisionreg/srletters/SR2012.htm
+    acl_policy_statement_2023.pdf: https://www.govinfo.gov/content/pkg/FR-2023-04-27/pdf/2023-08876.pdf
+    2026_stress_test_methodology.pdf: https://www.federalreserve.gov/publications/files/2026-february-supervisory-stress-test-methodology.pdf
+    fall_2026_credit_risk_models.pdf: https://www.federalreserve.gov/supervisionreg/files/fall-2026-credit-risk-models-description.pdf
+    stress_testing_changes_effective_dates.pdf: https://www.federalreserve.gov/supervisionreg/files/stress-testing-changes-and-effective-dates.pdf
+    2026_final_scenarios.pdf: https://www.federalreserve.gov/publications/files/2026-final-supervisory-stress-test-scenarios-20260204.pdf
+    2026_dfast_results.pdf: https://www.federalreserve.gov/publications/files/2026-dfast-results-20260624.pdf
+
+pd:
+  train_vintages: [1999, 2014]
+  oot_vintages: [2015, 2019]
+  holdout_share: 0.20             # in-time holdout, split by loan (all snapshots of a loan together)
+  hpi_lag_months: 2               # an index for month t is not published at t
+  binning:
+    max_n_prebins: 20
+    min_prebin_size: 0.02
+    max_n_bins: 8
+    min_bin_size: 0.03
+    default_trend: auto_asc_desc  # monotone WoE: explainable, stable
+    trend_overrides:
+      loan_age: peak              # default hazard rises then falls with seasoning
+    min_bin_size_overrides:       # rare but high-risk states need their own bin (D-018)
+      delq_num: 0.001
+      modified: 0.001
+  # Excluded on conceptual grounds, evidenced by the training-only stability screen (D-019)
+  exclude_features: [orig_rate, channel]
+  stability_screen: {early_vintages: [1999, 2008], late_vintages: [2009, 2014], psi_flag: 0.25}
+  iv_min: 0.02                    # below = no predictive power
+  iv_suspicious: 0.5              # above = check for leakage
+  corr_max: 0.70                  # |Pearson| between WoE features
+  pvalue_max: 0.01
+  calib_bins: 10
+  bootstrap_reps: 200             # loan-clustered bootstrap for Gini CI
+  points: {base_score: 600, base_odds: 50, pdo: 20}
+  calendar_split: {train_snapshot_max: 201312, test_snapshot_min: 201501}
+  behavioral_features: [delq_num, ever_30dpd, modified, paydown, loan_age]
+  lgbm:
+    params:
+      objective: binary
+      learning_rate: 0.05
+      num_leaves: 31
+      min_child_samples: 500
+      subsample: 0.8
+      subsample_freq: 1
+      colsample_bytree: 0.8
+      reg_lambda: 1.0
+      verbose: -1
+    num_boost_round: 3000
+    early_stopping_rounds: 100
+    monotone:                     # economic direction; others unconstrained
+      fico: -1
+      ltv: 1
+      cltv: 1
+      dti: 1
+      mtm_ltv: 1
+      delq_num: 1
+      sato: 1
+  shap_sample: 20000
+  recalibration:                  # D-020: logistic recalibration on a recent window
+    calib_snapshots: [201501, 201712]   # 12m outcomes fully observed by 2018-12
+    test_snapshot_min: 201901           # outcome windows start after calibration windows end
+
+hazard:
+  vintages: [1999, 2025]
+  fit_loan_share: 0.25            # loans used for estimation
+  valid_loan_share: 0.10          # different loans, all months, for backtesting
+  survive_sample_rate: 0.05       # choice-based sampling of survive months (constants corrected)
+  dev_period_max: 201712          # development fit: months <= Dec 2017
+  valid_period: [201801, 202512]  # out-of-time backtest window (includes COVID)
+  prod_period_max: 202512         # production refit through the CECL as-of date
+  # COVID policy regime (forbearance + stimulus broke the unemployment -> default link). D-024
+  exclude_estimation_periods: [[202003, 202112]]
+  macro_lag_quarters: 1           # UR enters with a one-quarter lag (delinquency precedes 90+ DPD)
+  hpi_lag_months: 3
+  incentive_lag_months: 2         # refinance decision precedes payoff by ~2 months
+  beta_estimation_quarters: [1991, 2025]
+  knots:
+    age_years: [1, 2, 3, 5, 10]
+    fico: [680, 740]
+    mtm_ltv: [0.8, 1.0, 1.2]
+    incentive: [-1.0, 0.0, 0.5, 1.0, 2.0]   # -1 knot: turnover floor when rates exceed note rate
+
+lgd:
+  max_default_period: 202112      # later defaults are too often unresolved (resolution bias), D-027
+  train_default_max: 201612       # OOT test: defaults 2017-2021 (moved from 2012, D-031)
+  servicing_regime_start_year: 2013   # post-crisis loss-mitigation regime indicator in the cure model, D-031
+  zb16_treatment: cure            # 'cure' or 'exclude': RPL sales are reperforming loans, D-028
+  severity_basis: principal       # exclude delinquent accrued interest (reversed under CECL election), D-029
+  clip: [0.0, 1.0]                # fractional response must lie in [0, 1]
+  hpi_lag_months: 3
+  mtm_knots: [0.8, 1.0, 1.2]
+  ead_lookback_months: 12
+  hpi_forward_months: 12          # state HPI change over the year after default, D-030
+
+cecl:
+  as_of: 202512                   # matches the 2026 DFAST jump-off (2025Q4), D-010
+  max_horizon_months: 360
+  rs_quarters: 8                  # reasonable-and-supportable forecast period, D-034
+  reversion_quarters: 4           # straight-line reversion, D-035
+  reversion_method: output        # 'output' = to historical loss rate (main); 'input' = macro to long run, model throughout
+  scenarios:                      # D-033
+    baseline: {source: baseline, scale: 0.0, weight: 0.50}
+    downside: {source: severely_adverse, scale: 0.5, weight: 0.30}
+    upside: {source: severely_adverse, scale: -0.5, weight: 0.20}
+  ur_floor: 3.0
+  long_run:                       # model development period, not 1976+ (1980s rates), D-035
+    ur_years: [1999, 2025]
+    mort_rate_years: [1999, 2025]
+    hpi_growth_years: [1999, 2025]
+  hist_loss_years: [2000, 2021]   # resolved defaults only (D-027)
+  overlay:                        # D-036
+    calib_as_of: [201612, 201712, 201812, 202112, 202212, 202312, 202412]
+    horizon_months: 12
+    decay_months: 12              # multiplier fades linearly to 1 over the following 12 months
+  backtest_months: 6              # Jan-Jun 2026, never used in development
+  sensitivity:
+    hist_loss_windows: [[2012, 2021], [2000, 2006], [2008, 2012]]   # post-crisis, pre-crisis, crisis
+    rs_quarters: [4, 12]
+    reversion_quarters: [0, 8]
+    downside_scale: [1.0]
+    weight_sets:
+      equal: {baseline: 0.3334, downside: 0.3333, upside: 0.3333}
+      base_heavy: {baseline: 0.70, downside: 0.20, upside: 0.10}
+      downside_heavy: {baseline: 0.40, downside: 0.50, upside: 0.10}
+
+dfast:
+  horizon_quarters: 9             # 2026Q1-2028Q1, the supervisory projection horizon
+  scenarios: {baseline: 0.0, severely_adverse: 1.0}   # scale toward the severely adverse path
+  fed_benchmark:                  # external input, cited: 2026 Fed stress test results, Table 9, p. 27
+    first_lien_loss_rate_sa: 0.015
+    first_lien_losses_bn_sa: 22.5
+    source: "2026 Federal Reserve Stress Test Results (June 2026), Table 9"
+  replay:                         # D-039: Dec-2007 portfolio on the realized 2008-2010 path
+    as_of: 200712
+
+llm:                              # Phase 7: local only (Ollama), D-042
+  host: http://localhost:11434
+  chat_model: qwen3:8b
+  embed_model: nomic-embed-text
+  temperature: 0.0
+  seed: 20261110
+  num_ctx: 8192
+  rag:
+    sources: [data/raw/docs, data/raw/freddie/docs, data/raw/dfast/2026]
+    exclude: [terms_conditions.pdf]
+    chunk_chars: 1200
+    overlap_chars: 200
+    top_k: 5
+    mode: dense                   # dense beat hybrid dense+BM25 on the eval set (ablation in metrics, D-046)
+  guardrail:
+    max_attempts: 3               # regenerate a section at most this many times
+    year_range: [1970, 2035]      # bare years are allowed
+  eval:
+    questions: eval/rag_questions.yaml
+    support_threshold: 0.75       # cosine similarity for an answer sentence to count as supported
+
+monitoring:                       # proposed ongoing-monitoring thresholds (policy parameters, MDD section 10)
+  psi_watch: 0.10
+  psi_action: 0.25
+  gini_drop_action: 0.05          # absolute drop vs development out-of-time Gini
+  actual_to_pred_band: [0.80, 1.25]
+  frequency: quarterly

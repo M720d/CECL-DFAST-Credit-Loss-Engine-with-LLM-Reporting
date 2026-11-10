@@ -1,0 +1,318 @@
+# Regulatory RAG evaluation set (D-044).
+# Each question has a gold source (document + pages) and key facts taken verbatim from that source.
+# Retrieval hit = a top-k chunk from the gold document on a gold page.
+# Key-fact recall = share of key facts (case-insensitive) present in the generated answer.
+# The eval script first verifies every key fact actually appears on the gold pages.
+
+- id: sr26-01
+  question: Which earlier supervisory letters does SR 26-2 supersede?
+  doc: SR2602.htm
+  pages: [1]
+  answer: SR 26-2 supersedes SR 11-7 (Guidance on Model Risk Management, 2011) and SR 21-8 (model risk management for BSA/AML systems).
+  facts: ["11-7", "21-8"]
+- id: sr26-02
+  question: For banking organizations of what size is the revised model risk management guidance expected to be most relevant?
+  doc: SR2602a1.pdf
+  pages: [2, 3]
+  answer: Banking organizations with over $30 billion in total assets.
+  facts: ["30 billion"]
+- id: sr26-03
+  question: Are generative AI and agentic AI models within the scope of the revised model risk guidance?
+  doc: SR2602a1.pdf
+  pages: [3]
+  answer: No. Generative and agentic AI models are not within the scope; the principles apply to traditional statistical and quantitative models and non-generative, non-agentic AI models.
+  facts: ["not within the scope", "agentic"]
+- id: sr26-04
+  question: How does SR 26-2 define the term model?
+  doc: SR2602a1.pdf
+  pages: [3]
+  answer: A complex quantitative method, system, or approach that applies statistical, economic, or financial theories to process input data into quantitative estimates; it excludes simple arithmetic calculations and deterministic rule-based processes.
+  facts: ["statistical, economic, or financial theories", "quantitative estimates"]
+- id: sr26-05
+  question: What four factors influence model risk under the revised guidance?
+  doc: SR2602a1.pdf
+  pages: [3, 4]
+  answer: A model's inherent risk, exposure, purpose, and use.
+  facts: ["inherent risk", "exposure", "purpose"]
+- id: sr26-06
+  question: What determines model materiality according to SR 26-2?
+  doc: SR2602a1.pdf
+  pages: [4]
+  answer: Model purpose, together with model exposure, determines model materiality.
+  facts: ["purpose", "exposure", "materiality"]
+- id: sr26-07
+  question: What is effective challenge and what qualities must the people performing it have?
+  doc: SR2602a1.pdf
+  pages: [5]
+  answer: Critical analysis by objective experts who evaluate model risk and effect changes across the model lifecycle; they need appropriate expertise, sufficient independence, and the organizational standing and influence to effect change.
+  facts: ["objective", "independence", "influence"]
+- id: sr26-08
+  question: What activities can model testing include during development?
+  doc: SR2602a1.pdf
+  pages: [6]
+  answer: Out-of-sample and out-of-time testing, comparison of alternative assumptions and methodologies, and a critical assessment of data quality, relevance, and inputs.
+  facts: ["out-of-sample", "out-of-time", "data quality"]
+- id: sr26-09
+  question: What are the components of model validation described in SR 26-2?
+  doc: SR2602a1.pdf
+  pages: [8, 9]
+  answer: Conceptual soundness, outcomes analysis, and ongoing model monitoring.
+  facts: ["conceptual soundness", "outcomes analysis", "monitoring"]
+- id: sr26-10
+  question: What forms can outcomes analysis take?
+  doc: SR2602a1.pdf
+  pages: [9]
+  answer: Testing during model development, reports or analysis performed as part of ongoing monitoring, or standalone activities such as back-testing or outlier analysis.
+  facts: ["back-testing", "outlier"]
+- id: sr26-11
+  question: What may be warranted for a model that no longer performs as expected?
+  doc: SR2602a1.pdf
+  pages: [9]
+  answer: Overlays, adjustment, or redevelopment, depending on the organization's model risk management policy on model deterioration.
+  facts: ["overlays", "redevelopment"]
+- id: sr26-12
+  question: What does sound practice involve if a model must be used before its validation is completed?
+  doc: SR2602a1.pdf
+  pages: [8]
+  answer: Greater attention to the model's limitations, informing relevant stakeholders of those limitations, and appropriate controls such as limits on model use or closer performance monitoring.
+  facts: ["limitations", "limits on model use"]
+- id: sr26-13
+  question: What is internal audit's role in model risk management under SR 26-2?
+  doc: SR2602a1.pdf
+  pages: [10]
+  answer: Internal audit generally does not duplicate model development or validation; it evaluates whether model risk management practices are rigorous and effective and whether policies are implemented.
+  facts: ["not duplicate", "rigorous and effective"]
+- id: sr26-14
+  question: What should a bank understand about a vendor model?
+  doc: SR2602a1.pdf
+  pages: [11, 12]
+  answer: Its conceptual soundness, design, development data, and performance, supported by ongoing monitoring and outcome analysis.
+  facts: ["conceptual soundness", "development data"]
+- id: sr26-15
+  question: Does SR 26-2 set enforceable standards, and what happens if a bank does not comply?
+  doc: SR2602a1.pdf
+  pages: [2]
+  answer: No. It does not set forth enforceable standards or prescriptive requirements, and non-compliance will not result in supervisory criticism, although violations of law or unsafe practices can still lead to supervisory action.
+  facts: ["enforceable standards", "supervisory criticism"]
+- id: sr26-16
+  question: What does adequate model documentation help support?
+  doc: SR2602a1.pdf
+  pages: [11]
+  answer: Continuity of operations, tracking of recommendations, responses, and exceptions, and management of model remediation efforts.
+  facts: ["continuity", "exceptions"]
+- id: acl-01
+  question: Over what term must expected credit losses be estimated under CECL, and how are prepayments and extensions treated?
+  doc: acl_policy_statement_2023.pdf
+  pages: [3, 4]
+  answer: Over the contractual term considering expected prepayments; renewals, extensions, and modifications are excluded unless they are part of the original or modified contract and not unconditionally cancellable by the institution.
+  facts: ["contractual term", "prepayments", "unconditionally cancellable"]
+- id: acl-02
+  question: What must management consider when estimating the net amount expected to be collected?
+  doc: acl_policy_statement_2023.pdf
+  pages: [3]
+  answer: Past events, current conditions, and reasonable and supportable forecasts.
+  facts: ["past events", "current conditions", "reasonable and supportable forecasts"]
+- id: acl-03
+  question: What does ASC 326 require for periods beyond the reasonable and supportable forecast period?
+  doc: acl_policy_statement_2023.pdf
+  pages: [4]
+  answer: Reverting to historical loss information, or an appropriate proxy, for those periods (the reversion period).
+  facts: ["historical loss information", "proxy"]
+- id: acl-04
+  question: Can management revert to historical loss information for individual forecast inputs rather than for the whole loss estimate?
+  doc: acl_policy_statement_2023.pdf
+  pages: [4]
+  answer: Yes. Management may revert for each individual forecast input or based on the entire estimate of loss.
+  facts: ["individual forecast input", "entire estimate of loss"]
+- id: acl-05
+  question: Which reversion techniques are acceptable under the interagency policy statement?
+  doc: acl_policy_statement_2023.pdf
+  pages: [4]
+  answer: Reversion may be immediate, straight-line, or use any systematic, rational method; no specific technique or reversion period is required.
+  facts: ["immediate", "straight-line", "systematic, rational"]
+- id: acl-06
+  question: Which methods may management use to estimate expected credit losses?
+  doc: acl_policy_statement_2023.pdf
+  pages: [3]
+  answer: A loss-rate method, a probability of default/loss given default method, a roll-rate method, a discounted cash flow method, aging schedules, or another reasonable method.
+  facts: ["probability of default", "roll-rate", "discounted cash flow"]
+- id: acl-07
+  question: What are examples of loss-rate methods under CECL?
+  doc: acl_policy_statement_2023.pdf
+  pages: [3]
+  answer: The weighted-average remaining maturity (WARM) method, vintage analysis, and the snapshot or open pool method.
+  facts: ["weighted-average remaining maturity", "vintage analysis", "open pool"]
+- id: acl-08
+  question: What is a collateral-dependent financial asset under ASC 326?
+  doc: acl_policy_statement_2023.pdf
+  pages: [5]
+  answer: An asset whose repayment is expected substantially through the operation or sale of the collateral when the borrower is experiencing financial difficulty as of the reporting date.
+  facts: ["operation or sale of the collateral", "financial difficulty"]
+- id: acl-09
+  question: How is the allowance for a collateral-dependent loan measured for regulatory reporting?
+  doc: acl_policy_statement_2023.pdf
+  pages: [5]
+  answer: Using the fair value of the collateral, regardless of whether foreclosure is probable, adjusted for estimated costs to sell where applicable.
+  facts: ["fair value of collateral", "costs to sell"]
+- id: acl-10
+  question: Can historical loss information come from external data?
+  doc: acl_policy_statement_2023.pdf
+  pages: [4]
+  answer: Yes; it may be based on internal information, external information, or a combination, and may need adjustment for differences in current conditions.
+  facts: ["internal information", "external information"]
+- id: acl-11
+  question: How should historical loss information be adjusted for current conditions and forecasts?
+  doc: acl_policy_statement_2023.pdf
+  pages: [4]
+  answer: Adjustments reflect how current conditions and reasonable and supportable forecasts differ from the historical loss period; they may be quantitative or qualitative and reflect changes such as unemployment rates or delinquency.
+  facts: ["quantitative or qualitative", "unemployment"]
+- id: acl-12
+  question: How often should the board review and approve written loss estimation policies?
+  doc: acl_policy_statement_2023.pdf
+  pages: [8]
+  answer: At least annually, as part of overseeing management's significant ACL judgments and estimates.
+  facts: ["at least annually"]
+- id: acl-13
+  question: What do ACL model validation activities include according to the policy statement?
+  doc: acl_policy_statement_2023.pdf
+  pages: [10]
+  answer: Evaluating conceptual soundness including developmental evidence, ongoing monitoring including process verification and benchmarking, and analyzing model output.
+  facts: ["conceptual soundness", "benchmarking", "process verification"]
+- id: acl-14
+  question: May an institution use multiple economic scenarios when estimating expected credit losses?
+  doc: acl_policy_statement_2023.pdf
+  pages: [4]
+  answer: Yes; institutions are not precluded from considering multiple economic scenarios.
+  facts: ["multiple economic scenarios"]
+- id: acl-15
+  question: What are purchased credit-deteriorated (PCD) assets?
+  doc: acl_policy_statement_2023.pdf
+  pages: [5]
+  answer: Acquired financial assets that, at acquisition, have experienced more-than-insignificant deterioration in credit quality since origination.
+  facts: ["more-than-insignificant", "since origination"]
+- id: scn-01
+  question: How high does the unemployment rate rise in the 2026 severely adverse scenario and when does it peak?
+  doc: 2026_final_scenarios.pdf
+  pages: [10]
+  answer: It rises 5.5 percentage points from 4.5 percent in 2025Q4 to a peak of 10 percent in the third quarter of 2027.
+  facts: ["10 percent", "4.5 percent"]
+- id: scn-02
+  question: How much do house prices and commercial real estate prices fall in the 2026 severely adverse scenario?
+  doc: 2026_final_scenarios.pdf
+  pages: [10]
+  answer: Nominal house prices fall 30 percent and commercial real estate prices fall 39 percent.
+  facts: ["30 percent", "39 percent"]
+- id: scn-03
+  question: How much do equity prices fall in the 2026 severely adverse scenario?
+  doc: 2026_final_scenarios.pdf
+  pages: [10]
+  answer: About 58 percent in the first three quarters of the scenario.
+  facts: ["58 percent"]
+- id: scn-04
+  question: What period do the 2026 supervisory scenarios cover and how many variables does each include?
+  doc: 2026_final_scenarios.pdf
+  pages: [13]
+  answer: From the first quarter of 2026 through the first quarter of 2029, with 28 variables in each scenario.
+  facts: ["first quarter of 2029", "28 variables"]
+- id: scn-05
+  question: What path does unemployment follow in the 2026 baseline scenario?
+  doc: 2026_final_scenarios.pdf
+  pages: [14]
+  answer: It moves up to 4.6 percent in 2026Q1, stays there through 2026Q3, then gradually declines to 4.2 percent by the end of the scenario.
+  facts: ["4.6 percent", "4.2 percent"]
+- id: scn-06
+  question: Is the supervisory baseline scenario a forecast of the Federal Reserve?
+  doc: 2026_final_scenarios.pdf
+  pages: [14]
+  answer: No; the baseline scenario is not a forecast of the Federal Reserve.
+  facts: ["not a forecast"]
+- id: res-01
+  question: How did the aggregate CET1 ratio evolve under the 2026 severely adverse scenario, and how many banks were tested?
+  doc: 2026_dfast_results.pdf
+  pages: [8, 17]
+  answer: For the 32 banks, it falls from an actual 12.8 percent in 2025Q4 to a projected minimum of 11.2 percent, then rises to 12.7 percent at the end of the horizon.
+  facts: ["12.8 percent", "11.2 percent"]
+- id: res-02
+  question: What were projected first-lien mortgage losses and the loss rate under the 2026 severely adverse scenario?
+  doc: 2026_dfast_results.pdf
+  pages: [27]
+  answer: Domestic first-lien mortgage losses of $22.5 billion, a portfolio loss rate of 1.5 percent.
+  facts: ["22.5", "1.5"]
+- id: res-03
+  question: What were total projected loan losses and the aggregate loan loss rate in the 2026 stress test?
+  doc: 2026_dfast_results.pdf
+  pages: [27]
+  answer: $624.9 billion, a 6.9 percent loss rate.
+  facts: ["624.9", "6.9"]
+- id: res-04
+  question: What was the projected credit card loss rate in the 2026 severely adverse scenario?
+  doc: 2026_dfast_results.pdf
+  pages: [27]
+  answer: 17.1 percent ($203.0 billion).
+  facts: ["17.1"]
+- id: res-05
+  question: Why did projected loan losses increase in the 2026 stress test?
+  doc: 2026_dfast_results.pdf
+  pages: [9]
+  answer: Loan balances grew by around 10 percent in 2025, concentrated in credit cards and wholesale loans, and some scenario variables were more severe, including corporate bond spreads and commercial real estate prices.
+  facts: ["10 percent", "credit cards"]
+- id: res-06
+  question: Why did the Board propose averaging stress test results over two years?
+  doc: 2026_dfast_results.pdf
+  pages: [7]
+  answer: To reduce the year-over-year volatility of stress capital buffer requirements.
+  facts: ["two years", "volatility"]
+- id: fed-01
+  question: How does the Fed's First Lien Mortgage Model define default?
+  doc: fall_2026_credit_risk_models.pdf
+  pages: [106]
+  answer: 180 days or more past due, or a loan status of real estate owned (REO) or involuntary liquidation.
+  facts: ["180 days", "involuntary liquidation"]
+- id: fed-02
+  question: How does the Fed's First Lien Mortgage PD model work?
+  doc: fall_2026_credit_risk_models.pdf
+  pages: [105, 106, 107]
+  answer: A regression framework estimates quarterly transitions between payment statuses (current, delinquent, default, paid off) conditional on prior status, loan characteristics, and macro variables; default and paid off are terminal; separate models for ARMs and FRMs.
+  facts: ["terminal", "adjustable-rate"]
+- id: fed-03
+  question: What data does the Fed's First Lien Model use and what framework does it follow?
+  doc: fall_2026_credit_risk_models.pdf
+  pages: [105]
+  answer: Loan-level data from the FR Y-14M report (Schedule A) and the supervisory scenarios, in an expected-loss framework with PD, LGD, and EAD components.
+  facts: ["Y-14M", "EAD"]
+- id: fed-04
+  question: Which mortgages are covered by the Fed's First Lien Model?
+  doc: fall_2026_credit_risk_models.pdf
+  pages: [104]
+  answer: Portfolio loans only; the Board assumes no losses on government-program loans such as FHA or VA, and loans repurchased from the GSEs are included.
+  facts: ["portfolio loans", "FHA"]
+- id: fm-01
+  question: How is the Freddie Mac Single-Family Loan-Level sample dataset constructed?
+  doc: user_guide.pdf
+  pages: [3]
+  answer: A simple random sample of 50,000 loans from each full vintage year and a proportionate number from each partial vintage year.
+  facts: ["simple random sample", "50,000"]
+- id: fm-02
+  question: What is the Estimated Loan-to-Value (ELTV) field in the Freddie Mac dataset?
+  doc: user_guide.pdf
+  pages: [14]
+  answer: Outstanding loan balance divided by the property's estimated current value from Freddie Mac's proprietary Automated Valuation Model.
+  facts: ["Automated Valuation Model", "estimated current value"]
+- id: fm-03
+  question: What do the codes in the Payment Deferral Flag mean?
+  doc: user_guide.pdf
+  pages: [14]
+  answer: C means a payment deferral was granted in the current period; P means in a prior period.
+  facts: ["Current Period", "Prior Period"]
+- id: fm-04
+  question: Why do data anomalies occur in the Freddie Mac loan-level dataset?
+  doc: faq.pdf
+  pages: [3]
+  answer: Monthly performance and loss data combine elements from multiple reporting cycles and systems, so timing mismatches between default reporting and investor reporting cycles can appear as anomalies.
+  facts: ["reporting cycles", "timing mismatches"]
+- id: def-01
+  question: Which house price index is used in the supervisory stress test scenarios?
+  doc: domestic-data-definitions-2025.pdf
+  pages: [1]
+  answer: The Price Index for Owner-Occupied Real Estate from the Z.1 Financial Accounts of the United States (series FL075035243.Q divided by 1000).
+  facts: ["Owner-Occupied Real Estate", "Z.1"]

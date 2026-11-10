@@ -1,0 +1,152 @@
+# Requirement -> implementation -> test -> result traceability (D-045).
+# 'requirement' is a paraphrase; 'source' + 'pages' point to the passage; 'query' is used to retrieve it
+# from the RAG index as evidence. 'tests' are pytest node ids; 'metric' is a dotted path into
+# metrics.json. 'assessment' is the developer's own judgment (Met / Partially met), kept separate from
+# the automated test status.
+
+- id: R01
+  source: SR2602a1.pdf
+  pages: [6]
+  requirement: Model testing should include out-of-sample and out-of-time testing.
+  query: testing out-of-sample and out-of-time testing comparison of alternative assumptions
+  implementation: Vintage-based OOT split (D-008, D-012); hazard and LGD OOT backtests (D-021, D-027)
+  tests: [tests/test_pd.py::test_gini_and_ks_match_references, tests/test_panel.py::test_no_truncated_labels_near_cutoff]
+  metric: phase2.scorecard.discrimination.2.gini
+  assessment: Met
+- id: R02
+  source: SR2602a1.pdf
+  pages: [6]
+  requirement: Testing should include a critical assessment of data quality, relevance, and inputs.
+  query: critical assessment of data quality relevance and inputs
+  implementation: Strict schema casting, duplicate/gap/ID checks, loss identity reconciliation (D-002, D-011)
+  tests: [tests/test_schema_and_metrics.py::test_raw_files_match_layout, tests/test_panel.py::test_loss_identity_on_real_reo_row]
+  metric: phase1.totals.loss_identity_pass
+  assessment: Met
+- id: R03
+  source: SR2602a1.pdf
+  pages: [6]
+  requirement: Testing should compare alternative assumptions and methodologies.
+  query: comparison of alternative assumptions and methodologies
+  implementation: LightGBM challenger (D-016); strict vs ex-forbearance default definitions (D-004); input vs output reversion (D-035)
+  tests: [tests/test_pd.py::test_noise_feature_dropped_and_signal_kept]
+  metric: phase2.gini_uplift_lgbm_minus_scorecard_oot
+  assessment: Met
+- id: R04
+  source: SR2602a1.pdf
+  pages: [8]
+  requirement: Validation of conceptual soundness assesses and documents design, key modeling choices, assumptions and data selection.
+  query: conceptual soundness documenting model design key modeling choices assumptions data selection
+  implementation: DECISIONS.md with rejected alternatives; coefficient sign checks (D-015, D-022)
+  tests: [tests/test_pd.py::test_coefficients_negative_on_woe]
+  metric: phase2.scorecard.n_features
+  assessment: Met
+- id: R05
+  source: SR2602a1.pdf
+  pages: [9]
+  requirement: Outcomes analysis compares model outputs with real-world outcomes, including back-testing.
+  query: outcomes analysis compares model outputs to real-world outcomes back-testing
+  implementation: Jan-Jun 2026 CECL backtest (D-036); 2008-2010 crisis replay (D-039)
+  tests: [tests/test_dfast.py::test_quarterly_aggregation_and_fed_loss_rate, tests/test_allowance.py::test_engine_matches_closed_form]
+  metric: phase6.crisis_replay.actual_to_pred
+  assessment: Met
+- id: R06
+  source: SR2602a1.pdf
+  pages: [8]
+  requirement: Benchmarking to other models may be a practical validation assessment.
+  query: interpretability measures or benchmarking to other models
+  implementation: Challenger model (D-016); Fed 2026 first-lien benchmark (D-038)
+  tests: [tests/test_dfast.py::test_quarterly_aggregation_and_fed_loss_rate]
+  metric: phase6.sa_vs_fed_benchmark_ratio
+  assessment: Met
+- id: R07
+  source: SR2602a1.pdf
+  pages: [9]
+  requirement: Ongoing monitoring evaluates whether the model performs as expected as conditions change.
+  query: ongoing model monitoring performing as expected changes in market conditions
+  implementation: Score PSI and per-feature CSI (D-017); calibration by snapshot year
+  tests: [tests/test_pd.py::test_psi_zero_for_same_and_positive_for_shift]
+  metric: phase2.scorecard.psi_score_fit_vs_oot
+  assessment: Partially met
+  note: Monitoring metrics are computed; a recurring monitoring process is out of scope for a portfolio project.
+- id: R08
+  source: SR2602a1.pdf
+  pages: [3]
+  requirement: Generative and agentic AI are outside the guidance; governance and controls should still be determined for such tools.
+  query: generative AI and agentic AI models not within the scope governance and controls
+  implementation: LLM writes narrative only; number guardrail and citation check (D-043)
+  tests: [tests/test_guardrail.py::test_fails_invented_or_misrounded_figures, tests/test_guardrail.py::test_passes_correct_figures_at_displayed_precision]
+  metric: phase7.mdd.sections_passed
+  assessment: Met
+- id: R09
+  source: SR2602a1.pdf
+  pages: [11]
+  requirement: Adequate documentation supports continuity and tracking of recommendations and exceptions.
+  query: adequate documentation continuity of operations tracking recommendations exceptions
+  implementation: DECISIONS.md, metrics.json, MDD draft, this matrix
+  tests: [tests/test_schema_and_metrics.py::test_metrics_section_replace_and_nan]
+  metric: phase7.traceability.requirements
+  assessment: Met
+- id: R10
+  source: acl_policy_statement_2023.pdf
+  pages: [3, 4]
+  requirement: Expected credit losses are estimated over the contractual term, considering expected prepayments.
+  query: contractual term considering expected prepayments renewals extensions
+  implementation: Competing-risk hazard; engine projects to maturity with prepayment (D-021)
+  tests: [tests/test_hazard.py::test_hazards_are_valid_probabilities_and_stable, tests/test_allowance.py::test_engine_matches_closed_form]
+  metric: phase5.scenarios.baseline.lifetime_prepay_prob
+  assessment: Met
+- id: R11
+  source: acl_policy_statement_2023.pdf
+  pages: [3, 4]   # p.3 states the requirement; p.4 has the "Reasonable and Supportable Forecasts" section
+  requirement: Estimates consider past events, current conditions, and reasonable and supportable forecasts.
+  query: past events current conditions reasonable and supportable forecasts
+  implementation: Fed-based scenarios over an 8-quarter R&S period (D-033, D-034)
+  tests: [tests/test_allowance.py::test_scenario_scaling_reversion_and_floor]
+  metric: phase5.method.rs_quarters
+  assessment: Met
+- id: R12
+  source: acl_policy_statement_2023.pdf
+  pages: [4]
+  requirement: Beyond the R&S period, revert to historical loss information using a systematic, rational method.
+  query: reverting to historical loss information immediate straight-line systematic rational method
+  implementation: 4-quarter straight-line output reversion; input reversion as sensitivity (D-035)
+  tests: [tests/test_allowance.py::test_output_reversion_blend]
+  metric: phase5.hist_annual_loss_rate
+  assessment: Met
+- id: R13
+  source: acl_policy_statement_2023.pdf
+  pages: [4]
+  requirement: Multiple economic scenarios may be considered.
+  query: not precluded from considering multiple economic scenarios
+  implementation: Probability-weighted baseline/downside/upside (D-033)
+  tests: [tests/test_allowance.py::test_scenario_scaling_reversion_and_floor]
+  metric: phase5.acl_weighted_pct_upb
+  assessment: Met
+- id: R14
+  source: acl_policy_statement_2023.pdf
+  pages: [4]
+  requirement: Historical loss information is adjusted for differences in current conditions, e.g. delinquency.
+  query: adjustments to historical loss information quantitative or qualitative unemployment delinquency
+  implementation: Delinquency and forbearance overlays calibrated on past year-ends (D-036)
+  tests: [tests/test_allowance.py::test_overlay_multiplier_and_decay]
+  metric: phase5.overlay_multipliers.S3_dpd60
+  assessment: Met
+- id: R15
+  source: acl_policy_statement_2023.pdf
+  pages: [5]
+  requirement: Collateral-dependent loans are measured at fair value of collateral less costs to sell.
+  query: collateral-dependent fair value of collateral costs to sell
+  implementation: Loans in default take PD = 1 and the LGD model (severity includes selling and carrying costs)
+  tests: [tests/test_allowance.py::test_in_default_loans_default_in_month_one]
+  metric: phase5.portfolio.loans
+  assessment: Partially met
+  note: LGD is a model estimate, not a loan-by-loan collateral valuation.
+- id: R16
+  source: 2026_final_scenarios.pdf
+  pages: [13]
+  requirement: Supervisory projections use the published scenarios over the projection horizon.
+  query: scenarios start in the first quarter of 2026 and extend through the first quarter of 2029 variables
+  implementation: Fed 2026 baseline and severely adverse paths, 9 quarters (D-038)
+  tests: [tests/test_dfast.py::test_quarterly_aggregation_and_fed_loss_rate]
+  metric: phase6.results.severely_adverse.loss_rate_fed_def
+  assessment: Met
